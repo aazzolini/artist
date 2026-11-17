@@ -76,7 +76,7 @@ footer p { margin: 0 0 6px; }
   <header class="mast">
     <h1>News in <em>Letters</em></h1>
     <div>
-      <p class="lede">A new picture every hour, typed out of the day's news. Tap a picture to zoom in until the letters show.</p>
+      <p class="lede">A new picture every hour, typed out of the day's news. Tap or pinch a picture to zoom in until the letters show.</p>
       <p class="count" id="count">Loading the pictures…</p>
     </div>
   </header>
@@ -107,6 +107,11 @@ const calm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)")
 let pieces = [], cur = -1, cw = 0, ch = 0, C = 0, R = 0, M = 1, sx = 1, sy = 1, zm = 8, W = 0, H = 0, z = 1, fx = 0.5, fy = 0.4, raf = 0, key = "", pals = null, dmax = 0, token = 0, ready = false, drag = null;
 const cache = new Map(), thumbs = new Map();
 let stat = [], liveRecs = [], want = (location.hash || "").replace(/^#p-/, ""), jobs = Promise.resolve();
+const pts = new Map();
+let pinch = null, touched = -1e9, chase = 0;
+// This tab remembers when it is sitting on the newest picture, so a reload opens on the newest again instead of the one named in the address.
+const newest = { get: () => { try { return sessionStorage.getItem("nil-newest") || ""; } catch (e) { return ""; } }, set: v => { try { if (v) sessionStorage.setItem("nil-newest", v); else sessionStorage.removeItem("nil-newest"); } catch (e) {} } };
+if (want && newest.get() === want) want = "";
 function LIB() {
   const hs = (x, y, s) => { let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul((s | 0) + 1, 1442695041)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
   const clamp = (v, a, b) => { a = a === undefined ? 0 : a; b = b === undefined ? 1 : b; return v < a ? a : v > b ? b : v; };
@@ -310,6 +315,7 @@ async function show(i, reveal) {
   const my = ++token;
   stop(); caption(p);
   if (location.hash !== "#p-" + p.id) { try { history.replaceState(null, "", "#p-" + p.id); } catch (e) { location.hash = "p-" + p.id; } }
+  newest.set(i === pieces.length - 1 ? p.id : "");
   if (!cw) return;
   info.textContent = "Typing " + (C * R).toLocaleString() + " letters…";
   try {
@@ -377,18 +383,26 @@ function merge(first) {
   if (!list.length) return;
   if (!first && list.length === pieces.length && list.every((p, i) => p.id === pieces[i].id)) return;
   const id = cur >= 0 && pieces[cur] ? pieces[cur].id : want;
-  const fresh = cur < 0;
+  const fresh = cur < 0, tail = !fresh && cur === pieces.length - 1;
   pieces = list;
   let at = pieces.findIndex(p => p.id === id);
   const jump = want && id !== want ? pieces.findIndex(p => p.id === want) : -1;
   cur = at >= 0 ? at : pieces.length - 1;
   timeline();
-  if (first || fresh) show(cur, true); else if (jump >= 0) show(jump, false); else caption(pieces[cur]);
+  if (first || fresh) show(cur, true); else if (jump >= 0) show(jump, false); else if (at < 0) show(cur, false);
+  else { caption(pieces[cur]); if (tail && cur < pieces.length - 1) follow(pieces[cur].id); }
   if (pieces[cur].id === want || jump >= 0) want = "";
+}
+function follow(from) {
+  // A newer picture arrived while the newest one was on screen: move to it, but never in the middle of a zoom, a drag or a pinch.
+  clearTimeout(chase);
+  if (!pieces[cur] || pieces[cur].id !== from || cur >= pieces.length - 1) return;
+  if (pinch || raf || performance.now() - touched < 12000) { chase = setTimeout(() => follow(from), 1500); return; }
+  show(pieces.length - 1, true);
 }
 async function load(first) {
   try {
-    const res = await fetch("pieces.json", { cache: "no-store" });
+    const res = await fetch("pieces.json?t=" + Math.floor(Date.now() / 20000), { cache: "no-store" });
     if (!res.ok) throw new Error("fetch " + res.status);
     stat = await res.json();
     merge(first);
@@ -420,16 +434,69 @@ function tap(e) {
   fx = clamp((e.clientX - r.left) / r.width, 0, 1); fy = clamp((e.clientY - r.top) / r.height, 0, 1);
   glide(zm, 600, 0);
 }
-vp.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, t: performance.now(), fx: clamp(fx, 0.5 / z, 1 - 0.5 / z), fy: clamp(fy, 0.5 / z, 1 - 0.5 / z), moved: false, id: e.pointerId }; if (z > 1.01) { try { vp.setPointerCapture(e.pointerId); } catch (err) {} } });
+// Pinch: two fingers on the picture zoom it about the point between them, and carry it along as they move.
+const under = (px, py) => { const r = vp.getBoundingClientRect(); return [clamp(fx, 0.5 / z, 1 - 0.5 / z) + (px - r.left - W / 2) / (W * z), clamp(fy, 0.5 / z, 1 - 0.5 / z) + (py - r.top - H / 2) / (H * z)]; };
+function zoomAt(nz, px, py, u, v) {
+  const r = vp.getBoundingClientRect();
+  z = clamp(nz, 1, zm);
+  fx = clamp(u - (px - r.left - W / 2) / (W * z), 0.5 / z, 1 - 0.5 / z); fy = clamp(v - (py - r.top - H / 2) / (H * z), 0.5 / z, 1 - 0.5 / z);
+  zoom.value = Math.round(z); draw();
+}
+const settle = () => { if (z < 1.03) { z = 1; zoom.value = 1; draw(); } };
+const span = () => { const [a, b] = [...pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) }; };
+vp.addEventListener("pointerdown", e => {
+  touched = performance.now();
+  if (e.pointerType === "touch" && pts.size < 2) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch) return;
+  if (pts.size === 2 && pts.has(e.pointerId) && ready) {
+    stop(); drag = null;
+    const m = span(), q = under(m.x, m.y);
+    pinch = { d: m.d, z: z, u: q[0], v: q[1] };
+    pts.forEach((_, id) => { try { vp.setPointerCapture(id); } catch (err) {} });
+    return;
+  }
+  drag = { x: e.clientX, y: e.clientY, t: performance.now(), fx: clamp(fx, 0.5 / z, 1 - 0.5 / z), fy: clamp(fy, 0.5 / z, 1 - 0.5 / z), moved: false, id: e.pointerId };
+  if (z > 1.01) { try { vp.setPointerCapture(e.pointerId); } catch (err) {} }
+});
 vp.addEventListener("pointermove", e => {
+  const q = pts.get(e.pointerId);
+  if (q) { q.x = e.clientX; q.y = e.clientY; }
+  if (pinch) { if (q && pts.size === 2) { touched = performance.now(); const m = span(); zoomAt(pinch.z * m.d / pinch.d, m.x, m.y, pinch.u, pinch.v); } return; }
   if (!drag || e.pointerId !== drag.id) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (Math.abs(dx) + Math.abs(dy) > 8) drag.moved = true;
-  if (z > 1.01 && drag.moved) { stop(); fx = clamp(drag.fx - dx / (W * z), 0.5 / z, 1 - 0.5 / z); fy = clamp(drag.fy - dy / (H * z), 0.5 / z, 1 - 0.5 / z); draw(); }
+  if (z > 1.01 && drag.moved) { stop(); touched = performance.now(); fx = clamp(drag.fx - dx / (W * z), 0.5 / z, 1 - 0.5 / z); fy = clamp(drag.fy - dy / (H * z), 0.5 / z, 1 - 0.5 / z); draw(); }
 });
-vp.addEventListener("pointerup", e => { const d = drag; drag = null; if (d && !d.moved && performance.now() - d.t < 600) tap(e); });
-vp.addEventListener("pointercancel", () => { drag = null; });
-zoom.addEventListener("input", () => { stop(); z = +zoom.value; draw(); });
+function lift(e) {
+  // A finger left the screen. Returns true if it belonged to a pinch; the finger that stays carries on as a drag.
+  const mine = pts.delete(e.pointerId);
+  if (!pinch) return false;
+  if (mine) {
+    pinch = null; settle();
+    const rest = pts.entries().next().value;
+    drag = rest && z > 1.01 ? { x: rest[1].x, y: rest[1].y, t: 0, fx: clamp(fx, 0.5 / z, 1 - 0.5 / z), fy: clamp(fy, 0.5 / z, 1 - 0.5 / z), moved: true, id: rest[0] } : null;
+  }
+  return true;
+}
+vp.addEventListener("pointerup", e => { touched = performance.now(); if (lift(e)) return; const d = drag; drag = null; if (d && e.pointerId === d.id && !d.moved && performance.now() - d.t < 600) tap(e); });
+vp.addEventListener("pointercancel", e => { if (!lift(e)) drag = null; });
+// Keep the browser from scrolling or zooming the page while two fingers are on the picture, or while a zoomed picture is being dragged.
+const hold = e => { if ((e.touches.length > 1 || pinch || (drag && z > 1.01)) && e.cancelable) e.preventDefault(); };
+vp.addEventListener("touchstart", hold, { passive: false });
+vp.addEventListener("touchmove", hold, { passive: false });
+// Trackpads: a pinch arrives as a wheel event with Ctrl held (Chrome, Firefox, Edge) or as gesture events (Safari on a Mac).
+vp.addEventListener("wheel", e => {
+  if (!ready || !(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault(); stop(); touched = performance.now();
+  const q = under(e.clientX, e.clientY);
+  zoomAt(z * Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.012)), e.clientX, e.clientY, q[0], q[1]);
+  if (e.deltaY > 0) settle();
+}, { passive: false });
+let grip = null;
+vp.addEventListener("gesturestart", e => { e.preventDefault(); if (ready && !("ontouchstart" in window)) { stop(); const q = under(e.clientX, e.clientY); grip = { z: z, u: q[0], v: q[1] }; } });
+vp.addEventListener("gesturechange", e => { e.preventDefault(); if (grip) { touched = performance.now(); zoomAt(grip.z * (e.scale || 1), e.clientX, e.clientY, grip.u, grip.v); } });
+vp.addEventListener("gestureend", e => { e.preventDefault(); if (grip) { grip = null; settle(); } });
+zoom.addEventListener("input", () => { stop(); touched = performance.now(); z = +zoom.value; draw(); });
 $("reveal").addEventListener("click", pullBack);
 $("newer").addEventListener("click", () => { if (cur < pieces.length - 1) show(cur + 1, false); });
 $("older").addEventListener("click", () => { if (cur > 0) show(cur - 1, false); });
@@ -452,7 +519,11 @@ async function start() {
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
   await load(true);
   live();
-  setInterval(() => load(false), 300000);
+  // Look for a new picture once a minute while the page is on screen, and straight away when it comes back into view.
+  setInterval(() => { if (!document.hidden) load(false); }, 60000);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { pts.clear(); pinch = null; drag = null; } else load(false); });
+  window.addEventListener("pageshow", e => { if (e.persisted) load(false); });
+  window.addEventListener("online", () => load(false));
 }
 start();
 })();
