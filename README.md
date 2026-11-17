@@ -39,7 +39,9 @@ and prices below Stripe's minimum all stop the app from starting.
 
 ## Go live
 
-1. Deploy the Dockerfile anywhere, such as Fly.io, Railway, Render or a $5 VPS. Mount `/data` so `orders.db` survives restarts.
+1. **Easiest:** on [Render](https://render.com), choose New → Blueprint and pick this repo. `render.yaml`
+   sets everything up (about $7/mo for the plan with a persistent disk). Render prompts you for the Stripe keys and `BASE_URL`
+   (your `https://….onrender.com` URL). Any Docker host works too; just mount `/data` so `orders.db` survives restarts.
 2. Set `BASE_URL` to your public HTTPS URL and use your **live** `sk_live_…` key.
 3. In Stripe Dashboard → Webhooks, add `https://your-domain/webhook` with the events
    `checkout.session.completed` and `checkout.session.async_payment_succeeded`. Put its signing
