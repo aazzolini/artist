@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>News in Letters</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* layout: one column on phones; from 940px the picture sits on the left and the timeline runs down the right */
+  --ink: #0a0d14;
+  --ground: #070a12;
+  --surface: #131824;
+  --line: #283040;
+  --text: #ece8df;
+  --muted: #8d95a5;
+  --accent: #e6b450;
+  --font-display: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-body: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--ink); color: var(--text); font-family: var(--font-body); font-size: 13.5px; line-height: 1.55; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.page { max-width: 1120px; margin: 0 auto; padding: 22px 16px 56px; }
+.mast { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 32px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.mast h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(42px, 10vw, 68px); line-height: 0.92; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.mast h1 em { color: var(--accent); }
+.lede { margin: 0; max-width: 44ch; color: var(--muted); }
+.count { margin: 6px 0 0; color: var(--text); font-variant-numeric: tabular-nums; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 34px; margin-top: 20px; }
+.stamp { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; font-variant-numeric: tabular-nums; }
+.stamp span { color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase; font-size: 12px; }
+.nav { display: flex; gap: 8px; }
+button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button[aria-disabled="true"] { color: var(--muted); cursor: default; border-color: var(--line); opacity: 0.55; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#stage { width: 100%; max-width: 560px; }
+#vp { position: relative; overflow: hidden; width: 100%; aspect-ratio: 4 / 5; background: var(--ground); border-radius: 6px; box-shadow: 0 0 0 1px var(--line); cursor: zoom-in; touch-action: pan-y; }
+.aa { position: absolute; left: 0; top: 0; white-space: pre; font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace; font-size: 12px; font-weight: 800; line-height: 9px; letter-spacing: 0; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; font-kerning: none; color: #ffffff; transform-origin: 0 0; -webkit-user-select: none; user-select: none; pointer-events: none; }
+#probe { visibility: hidden; }
+.controls { display: flex; align-items: center; gap: 12px; max-width: 560px; margin-top: 14px; }
+.controls label { color: var(--muted); }
+.controls input { flex: 1; min-width: 0; accent-color: var(--accent); height: 28px; }
+.readout { max-width: 560px; margin: 8px 0 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-height: 1.55em; }
+.caption { max-width: 560px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.caption h2 { font-family: var(--font-display); font-weight: 400; font-size: 38px; line-height: 1.02; margin: 0 0 8px; text-wrap: balance; }
+.caption p { margin: 0 0 8px; max-width: 62ch; }
+#note { color: var(--muted); }
+#src a { color: var(--accent); text-underline-offset: 3px; }
+.tl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 4px; font-family: var(--font-display); font-weight: 400; font-size: 30px; line-height: 1.1; }
+.day h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 22px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); font-variant-numeric: tabular-nums; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 16px 12px; }
+.thumb { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: none; text-align: left; border-radius: 4px; }
+.thumb img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; background: var(--ground); border-radius: 4px; box-shadow: 0 0 0 1px var(--line); filter: brightness(0.78); }
+.thumb:hover img { filter: none; }
+.thumb[aria-current="true"] img { box-shadow: 0 0 0 2px var(--accent); filter: none; }
+.thumb .t { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.thumb[aria-current="true"] .t { color: var(--accent); }
+.thumb .n { font-family: var(--font-display); font-size: 18px; line-height: 1.08; overflow-wrap: anywhere; }
+footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; max-width: 70ch; }
+footer p { margin: 0 0 6px; }
+@media (min-width: 940px) {
+  .cols { grid-template-columns: minmax(0, 500px) minmax(0, 1fr); gap: 48px; align-items: start; }
+  #stage, .controls, .readout, .caption { max-width: 500px; }
+}
+@media (min-width: 940px) and (min-height: 960px) { .viewer { position: sticky; top: 18px; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="mast">
+    <h1>News in <em>Letters</em></h1>
+    <div>
+      <p class="lede">A new picture every hour, typed out of the day's news. Tap a picture to zoom in until the letters show.</p>
+      <p class="count" id="count">Loading the pictures…</p>
+    </div>
+  </header>
+  <main class="cols">
+    <section class="viewer" aria-label="Selected picture">
+      <div class="stamp"><span id="stamp">&nbsp;</span><div class="nav"><button id="newer" type="button">Newer</button><button id="older" type="button">Older</button></div></div>
+      <div id="stage"><div id="vp" role="img" aria-label="Picture made of text"><div id="probe" class="aa" aria-hidden="true"></div><div id="art" class="aa" aria-hidden="true"></div></div></div>
+      <div class="controls"><label for="zoom">Zoom</label><input type="range" id="zoom" min="1" max="12" step="1" value="1"><button id="reveal" type="button">Pull back</button></div>
+      <p class="readout" id="info" aria-live="polite"></p>
+      <article class="caption"><h2 id="title">&nbsp;</h2><p id="headline"></p><p id="note"></p><p id="src"></p></article>
+    </section>
+    <section class="timeline" aria-label="Everything so far">
+      <h2 class="tl-head">Everything so far</h2>
+      <div id="days"></div>
+    </section>
+  </main>
+  <footer>
+    <p>Every picture is plain text: a few hundred thousand characters, each sized to 2 × 3 screen pixels so your screen blends them into tones.</p>
+    <p>The pictures are illustrations made by Claude from the linked reports. They are not photographs of the events.</p>
+  </footer>
+</div>
+<script>
+(() => {
+const FS = 12, DROP = "acemnorsuvwxz", MAXC = 640;
+const $ = id => document.getElementById(id);
+const stage = $("stage"), vp = $("vp"), art = $("art"), probe = $("probe"), zoom = $("zoom"), info = $("info"), days = $("days");
+const calm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+let pieces = [], cur = -1, cw = 0, ch = 0, C = 0, R = 0, M = 1, sx = 1, sy = 1, zm = 8, W = 0, H = 0, z = 1, fx = 0.5, fy = 0.4, raf = 0, key = "", pals = null, dmax = 0, token = 0, ready = false, drag = null;
+const cache = new Map(), thumbs = new Map();
+let stat = [], liveRecs = [], want = (location.hash || "").replace(/^#p-/, ""), jobs = Promise.resolve();
+function LIB() {
+  const hs = (x, y, s) => { let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul((s | 0) + 1, 1442695041)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
+  const clamp = (v, a, b) => { a = a === undefined ? 0 : a; b = b === undefined ? 1 : b; return v < a ? a : v > b ? b : v; };
+  const sm = (a, b, t) => { t = clamp((t - a) / (b - a)); return t * t * (3 - 2 * t); };
+  const mix = (a, b, t) => a + (b - a) * t;
+  const over = (base, m, v) => base * (1 - m) + v * m;
+  const screen = (a, b) => 1 - (1 - a) * (1 - b);
+  const gauss = (d, w) => Math.exp(-(d * d) / (w * w));
+  const vn = (x, y, s) => { const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy); const a = hs(xi, yi, s), b = hs(xi + 1, yi, s), c = hs(xi, yi + 1, s), d = hs(xi + 1, yi + 1, s); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; };
+  const fbm = (x, y, oct, s) => { oct = oct || 5; s = s || 0; let t = 0, amp = 1, n = 0, f = 1; for (let o = 0; o < oct; o++) { t += amp * vn(x * f + 17.3 * o, y * f + 9.1 * o, s + o); n += amp; amp *= 0.5; f *= 2.03; } return t / n; };
+  const sdBox = (x, y, x0, y0, x1, y1) => { const dx = Math.abs(x - (x0 + x1) / 2) - (x1 - x0) / 2, dy = Math.abs(y - (y0 + y1) / 2) - (y1 - y0) / 2; return Math.min(Math.max(dx, dy), 0) + Math.hypot(Math.max(dx, 0), Math.max(dy, 0)); };
+  const sdEll = (x, y, cx, cy, rx, ry) => (Math.hypot((x - cx) / rx, (y - cy) / ry) - 1) * Math.min(rx, ry);
+  const sdSeg = (x, y, ax, ay, bx, by) => { const qx = x - ax, qy = y - ay, vx = bx - ax, vy = by - ay, t = clamp((qx * vx + qy * vy) / (vx * vx + vy * vy || 1e-12)); return Math.hypot(qx - vx * t, qy - vy * t); };
+  const poly = pts => {
+    const n = pts.length; let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const p of pts) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }
+    return (x, y) => {
+      if (x < x0 - 0.02 || x > x1 + 0.02 || y < y0 - 0.02 || y > y1 + 0.02) return 1;
+      let d = 1e9, inside = false;
+      for (let i = 0, j = n - 1; i < n; j = i++) { const ax = pts[i][0], ay = pts[i][1], bx = pts[j][0], by = pts[j][1]; d = Math.min(d, sdSeg(x, y, ax, ay, bx, by)); if ((ay > y) !== (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside; }
+      return inside ? -d : d;
+    };
+  };
+  const cov = (d, px) => clamp(0.5 - d / px);
+  const stars = (x, y, G, s, dens) => { const gx = Math.floor(x / G), gy = Math.floor(y / G); if (hs(gx, gy, s) > dens) return 0; const sx = (gx + 0.2 + 0.6 * hs(gx, gy, s + 1)) * G, sy = (gy + 0.2 + 0.6 * hs(gx, gy, s + 2)) * G, m = Math.pow(hs(gx, gy, s + 3), 4), rr = 0.0012 + 0.0019 * m, d2 = ((x - sx) * (x - sx) + (y - sy) * (y - sy)) / (rr * rr); return d2 < 9 ? (0.3 + 0.7 * m) * Math.exp(-d2) : 0; };
+  const blur = (F, C, R, A, u) => {
+    const rx = Math.max(1, Math.round(u * C)), ry = Math.max(1, Math.round(u * R / A)); let a = Float32Array.from(F); const b = new Float32Array(a.length);
+    for (let pass = 0; pass < 3; pass++) {
+      for (let j = 0; j < R; j++) { const o = j * C; let s = 0; for (let i = -rx; i <= rx; i++) s += a[o + Math.min(C - 1, Math.max(0, i))]; for (let i = 0; i < C; i++) { b[o + i] = s / (2 * rx + 1); s += a[o + Math.min(C - 1, i + rx + 1)] - a[o + Math.max(0, i - rx)]; } }
+      for (let i = 0; i < C; i++) { let s = 0; for (let j = -ry; j <= ry; j++) s += b[Math.min(R - 1, Math.max(0, j)) * C + i]; for (let j = 0; j < R; j++) { a[j * C + i] = s / (2 * ry + 1); s += b[Math.min(R - 1, j + ry + 1) * C + i] - b[Math.max(0, j - ry) * C + i]; } }
+    }
+    return a;
+  };
+  return { hs, clamp, sm, mix, over, screen, gauss, vn, fbm, sdBox, sdEll, sdSeg, poly, cov, stars, blur };
+}
+function runScene(code, c, r) {
+  return new Promise((resolve, reject) => {
+    let w = null, done = false;
+    const finish = (err, out) => { if (done) return; done = true; clearTimeout(timer); if (w) w.terminate(); if (err) reject(err); else resolve(out); };
+    const timer = setTimeout(() => finish(new Error("timeout")), 25000);
+    const inline = () => { try { const o = new Function("C", "R", "A", "h", code)(c, r, 1.25, LIB()); finish(null, { F: Float32Array.from(o.F), P: o.P ? Uint8Array.from(o.P) : null }); } catch (e) { finish(e); } };
+    try {
+      const src = LIB.toString() + "\nconst h = LIB();\nfunction scene(C, R, A, h) {\n" + code + "\n}\nonmessage = e => { try { const o = scene(e.data.c, e.data.r, 1.25, h); const F = Float32Array.from(o.F); const P = o.P ? Uint8Array.from(o.P) : null; postMessage({ F, P }, P ? [F.buffer, P.buffer] : [F.buffer]); } catch (err) { postMessage({ error: String(err && err.message || err) }); } };";
+      w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+      w.onmessage = e => { if (e.data.error) finish(new Error(e.data.error)); else finish(null, e.data); };
+      w.onerror = () => { if (w) w.terminate(); w = null; inline(); };
+      w.postMessage({ c, r });
+    } catch (e) { inline(); }
+  });
+}
+const hs = (x, y) => { let n = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const top = list => Math.max.apply(null, list.map(a => a[1]));
+probe.textContent = Array(60).fill("M".repeat(100)).join("\n");
+
+function calibrate(kx, ky) {
+  const st = getComputedStyle(art), cv = document.createElement("canvas"), n = 4;
+  const w = Math.round(n * cw * kx), h = Math.round(n * ch * ky);
+  cv.width = w; cv.height = h;
+  const cx = cv.getContext("2d", { willReadFrequently: true }), out = [];
+  for (let c = 32; c < 127; c++) {
+    const s = String.fromCharCode(c);
+    cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, w, h); cx.setTransform(kx, 0, 0, ky, 0, 0);
+    cx.font = st.fontWeight + " " + FS + "px " + st.fontFamily; cx.fillStyle = "#fff"; cx.textBaseline = "alphabetic";
+    for (let r = -2; r < n + 2; r++) for (let k = -1; k <= n; k++) cx.fillText(s, k * cw, (r + 0.8) * ch);
+    const d = cx.getImageData(0, 0, w, h).data;
+    let sum = 0;
+    for (let i = 3; i < d.length; i += 4) sum += d[i];
+    out.push([c, sum / (255 * w * h)]);
+  }
+  return out;
+}
+function palette(list) {
+  list = list.slice().sort((a, b) => a[1] - b[1]);
+  const code = list.map(a => a[0]), dens = list.map(a => a[1]), lo = new Uint8Array(256), hi = new Uint8Array(256), tol = 0.03 * dmax;
+  for (let q = 0; q < 256; q++) {
+    const v = q / 255 * dmax;
+    let best = 0, a = -1, b = -1;
+    for (let k = 0; k < dens.length; k++) { if (Math.abs(dens[k] - v) < Math.abs(dens[best] - v)) best = k; if (Math.abs(dens[k] - v) <= tol) { if (a < 0) a = k; b = k; } }
+    if (a < 0) a = b = best;
+    lo[q] = a; hi[q] = b;
+  }
+  return { code, dens, lo, hi };
+}
+function tune() {
+  let list = null, m = 1;
+  try { for (; m <= 3; m++) { list = calibrate(2 * m / cw, 3 * m / ch); if (top(list) > 0.04) break; list = null; } } catch (e) { list = null; }
+  if (!list) { m = 1; list = []; const fb = " 00`06.07'12,12_13-14~14:14;19!22^22*23/24+28>29=29<29)31(32|32?34734L34[35]35t35l36T36J36}37i37{37%37j38f39Y40140y41F41I42C43244345V46546k46#47447X47Z47P48S48A48h48$50p50q51051651E51&51U51O52852952b53G53D53d53K53H54@55Q56R56N56g56W57M58B58"; for (let i = 0; i < fb.length; i += 3) list.push([fb.charCodeAt(i), +fb.substr(i + 1, 2) / 100]); }
+  if (m !== M) geom(m);
+  list = list.filter(a => DROP.indexOf(String.fromCharCode(a[0])) < 0);
+  dmax = top(list);
+  const eq = list.find(a => a[0] === 61)[1];
+  pals = [palette(list), palette(list.filter(a => a[0] === 32 || a[0] === 45 || a[0] === 126 || a[0] === 61 || a[1] > eq * 1.03))];
+}
+function dither(F, P) {
+  let e0 = new Float32Array(C + 2), e1 = new Float32Array(C + 2);
+  const row = new Uint8Array(C), rows = [];
+  for (let j = 0; j < R; j++) {
+    const dir = j & 1 ? -1 : 1;
+    for (let n = 0; n < C; n++) {
+      const i = dir > 0 ? n : C - 1 - n, q = j * C + i, f = F[q];
+      if (f < 0) { row[i] = 32; continue; }
+      const pal = pals[P ? P[q] : 0], v = f * dmax + e0[i + 1];
+      const lv = v <= 0 ? 0 : v >= dmax ? 255 : Math.round(v / dmax * 255);
+      const k = pal.lo[lv] + Math.floor(hs(i + 57, j + 131) * (pal.hi[lv] - pal.lo[lv] + 1));
+      row[i] = pal.code[k];
+      const er = clamp(v - pal.dens[k], -dmax / 2, dmax / 2);
+      e0[i + 1 + dir] += er * 0.4375; e1[i + 1 - dir] += er * 0.1875; e1[i + 1] += er * 0.3125; e1[i + 1 + dir] += er * 0.0625;
+    }
+    rows.push(String.fromCharCode.apply(null, row));
+    const tmp = e0; e0 = e1; e1 = tmp; e1.fill(0);
+  }
+  return rows.join("\n");
+}
+function geom(m) {
+  const dpr = window.devicePixelRatio || 1;
+  M = m; C = clamp(Math.floor(stage.clientWidth * dpr / (2 * m)), 60, MAXC); R = Math.round(C * 5 / 6);
+  sx = 2 * m / (cw * dpr); sy = 3 * m / (ch * dpr); W = C * 2 * m / dpr; H = R * 3 * m / dpr;
+  zm = Math.max(2, Math.round(9 / (cw * sx))); zoom.max = zm; z = Math.min(z, zm);
+  vp.style.aspectRatio = "auto"; vp.style.width = W + "px"; vp.style.height = H + "px";
+}
+function relayout() {
+  const dpr = window.devicePixelRatio || 1, r = probe.getBoundingClientRect(), w = r.width / 100, h = r.height / 60;
+  if (!stage.clientWidth || !w || !h) return;
+  const k2 = [stage.clientWidth, dpr, w.toFixed(3), h.toFixed(3)].join();
+  if (k2 === key) return;
+  key = k2; cw = w; ch = h; pals = null;
+  geom(1);
+  if (cur >= 0) show(cur, false);
+}
+const fmt = v => String(Math.round(v * 10) / 10);
+function draw() {
+  if (!ready) return;
+  const dpr = window.devicePixelRatio || 1, cxn = clamp(fx, 0.5 / z, 1 - 0.5 / z), cyn = clamp(fy, 0.5 / z, 1 - 0.5 / z);
+  const tx = Math.round((W / 2 - cxn * W * z) * dpr) / dpr, ty = Math.round((H / 2 - cyn * H * z) * dpr) / dpr;
+  art.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + (sx * z).toFixed(6) + "," + (sy * z).toFixed(6) + ")";
+  info.textContent = (C * R).toLocaleString() + " letters · each " + fmt(2 * M * z) + " × " + fmt(3 * M * z) + " screen pixels";
+  vp.style.touchAction = z > 1.01 ? "none" : "pan-y"; vp.style.cursor = z > 1.01 ? "grab" : "zoom-in";
+}
+function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
+function glide(to, dur, hold) {
+  stop();
+  if (calm) { z = to; zoom.value = to; draw(); return; }
+  const from = z, t0 = performance.now();
+  const step = now => {
+    const u = clamp((now - t0 - hold) / dur, 0, 1), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(2 - 2 * u, 2) / 2;
+    z = u < 1 ? from * Math.pow(to / from, e) : to; zoom.value = Math.round(z); draw();
+    raf = u < 1 ? requestAnimationFrame(step) : 0;
+  };
+  raf = requestAnimationFrame(step);
+}
+function pullBack() {
+  if (!ready) return;
+  const p = pieces[cur], f = p && p.focus || [0.5, 0.4];
+  if (calm) { z = 1; zoom.value = 1; draw(); return; }
+  fx = f[0]; fy = f[1]; z = zm; zoom.value = zm; draw();
+  glide(1, 4200, 700);
+}
+async function bitmap(blob) {
+  if (window.createImageBitmap) { try { return await createImageBitmap(blob); } catch (e) {} }
+  const im = new Image(); im.src = URL.createObjectURL(blob); await im.decode(); return im;
+}
+async function field(p) {
+  if (cache.has(p.id)) return cache.get(p.id);
+  let out;
+  if (p.img) {
+    const res = await fetch(p.img);
+    if (!res.ok) throw new Error("fetch " + res.status);
+    out = { bmp: await bitmap(await res.blob()), mask: null };
+    if (p.water) { const im = new Image(); im.src = p.water; await im.decode(); out.mask = im; }
+  } else out = { code: p.code, key: "", res: null };
+  cache.set(p.id, out);
+  if (cache.size > 6) cache.delete(cache.keys().next().value);
+  return out;
+}
+function sample(src, binary) {
+  const cv = document.createElement("canvas"); cv.width = C; cv.height = R;
+  const cx = cv.getContext("2d", { willReadFrequently: true });
+  cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
+  cx.drawImage(src, 0, 0, C, R);
+  const d = cx.getImageData(0, 0, C, R).data, n = C * R;
+  if (binary) { const P = new Uint8Array(n); for (let i = 0; i < n; i++) P[i] = d[i * 4] > 127 ? 1 : 0; return P; }
+  const F = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const v = d[i * 4]; F[i] = v <= 1 ? -1 : v / 255; }
+  return F;
+}
+const when = (ts, opt) => new Intl.DateTimeFormat(undefined, opt).format(new Date(ts));
+function caption(p) {
+  $("stamp").textContent = when(p.ts, { weekday: "short", month: "short", day: "numeric" }) + " · " + when(p.ts, { hour: "numeric", minute: "2-digit" });
+  $("title").textContent = p.title; $("headline").textContent = p.headline; $("note").textContent = p.note || "";
+  const src = $("src"); src.textContent = "";
+  if (p.url && /^https:\/\//.test(p.url)) { src.append("Report: "); const a = document.createElement("a"); a.href = p.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = p.source || "source"; src.append(a); }
+  vp.setAttribute("aria-label", p.title + ". " + p.headline + " Picture made of text.");
+  $("newer").setAttribute("aria-disabled", String(cur >= pieces.length - 1)); $("older").setAttribute("aria-disabled", String(cur <= 0));
+  days.querySelectorAll(".thumb").forEach(b => b.setAttribute("aria-current", String(b.dataset.id === p.id)));
+}
+async function show(i, reveal) {
+  const p = pieces[i];
+  if (!p) return;
+  cur = i;
+  const my = ++token;
+  stop(); caption(p);
+  if (location.hash !== "#p-" + p.id) { try { history.replaceState(null, "", "#p-" + p.id); } catch (e) { location.hash = "p-" + p.id; } }
+  if (!cw) return;
+  info.textContent = "Typing " + (C * R).toLocaleString() + " letters…";
+  try {
+    const f = await field(p);
+    await new Promise(r => setTimeout(r, 30));
+    if (my !== token) return;
+    if (!pals) tune();
+    let F, P = null;
+    if (f.bmp) { F = sample(f.bmp); if (f.mask) P = sample(f.mask, true); }
+    else {
+      const k = C + "x" + R;
+      if (f.key !== k) { f.res = await runScene(f.code, C, R); f.key = k; if (my !== token) return; }
+      F = Float32Array.from(f.res.F); P = f.res.P;
+      for (let i = 0; i < F.length; i++) if (!(F[i] > 0.004)) F[i] = -1;
+    }
+    art.textContent = dither(F, P);
+    ready = true;
+    const fo = p.focus || [0.5, 0.4]; fx = fo[0]; fy = fo[1];
+    if (reveal) pullBack(); else { z = 1; zoom.value = 1; draw(); }
+  } catch (e) {
+    if (my === token) info.textContent = "This picture didn't load. Check your connection, then pick it again.";
+  }
+}
+function timeline() {
+  days.textContent = "";
+  const groups = new Map();
+  for (let i = pieces.length - 1; i >= 0; i--) {
+    const k = when(pieces[i].ts, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(i);
+  }
+  for (const [k, list] of groups) {
+    const sec = document.createElement("section"); sec.className = "day";
+    const h = document.createElement("h3"), a = document.createElement("span"), b = document.createElement("span");
+    a.textContent = k; b.textContent = list.length + (list.length === 1 ? " picture" : " pictures"); h.append(a, b);
+    const g = document.createElement("div"); g.className = "grid";
+    for (const i of list) {
+      const p = pieces[i], btn = document.createElement("button"), im = document.createElement("img"), t = document.createElement("span"), n = document.createElement("span");
+      btn.type = "button"; btn.className = "thumb"; btn.dataset.id = p.id; btn.setAttribute("aria-current", String(i === cur));
+      im.loading = "lazy"; im.decoding = "async"; im.alt = ""; im.width = 176; im.height = 220;
+      if (p.thumb) im.src = p.thumb; else if (thumbs.has(p.id)) im.src = thumbs.get(p.id); else if (p.code) sketch(p);
+      t.className = "t"; t.textContent = when(p.ts, { hour: "numeric", minute: "2-digit" });
+      n.className = "n"; n.textContent = p.title;
+      btn.append(im, t, n); g.append(btn);
+    }
+    sec.append(h, g); days.append(sec);
+  }
+  const n = pieces.length, last = pieces[n - 1];
+  $("count").textContent = n + (n === 1 ? " picture" : " pictures") + " so far · latest " + when(last.ts, { month: "short", day: "numeric" }) + ", " + when(last.ts, { hour: "numeric", minute: "2-digit" });
+}
+function sketch(p) {
+  jobs = jobs.then(() => runScene(p.code, 88, 110)).then(o => {
+    const cv = document.createElement("canvas"); cv.width = 88; cv.height = 110;
+    const cx = cv.getContext("2d"), d = cx.createImageData(88, 110);
+    for (let i = 0; i < 9680; i++) { const v = Math.round(clamp(o.F[i], 0, 1) * 255); d.data[i * 4] = d.data[i * 4 + 1] = d.data[i * 4 + 2] = v; d.data[i * 4 + 3] = 255; }
+    cx.putImageData(d, 0, 0);
+    const u = cv.toDataURL("image/jpeg", 0.8); thumbs.set(p.id, u);
+    const el = days.querySelector('.thumb[data-id="' + p.id + '"] img');
+    if (el) el.src = u;
+  }).catch(() => {});
+}
+function merge(first) {
+  const have = new Set(stat.map(p => p.id));
+  const list = stat.concat(liveRecs.filter(p => !have.has(p.id))).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  if (!list.length) return;
+  if (!first && list.length === pieces.length && list.every((p, i) => p.id === pieces[i].id)) return;
+  const id = cur >= 0 && pieces[cur] ? pieces[cur].id : want;
+  const fresh = cur < 0;
+  pieces = list;
+  let at = pieces.findIndex(p => p.id === id);
+  const jump = want && id !== want ? pieces.findIndex(p => p.id === want) : -1;
+  cur = at >= 0 ? at : pieces.length - 1;
+  timeline();
+  if (first || fresh) show(cur, true); else if (jump >= 0) show(jump, false); else caption(pieces[cur]);
+  if (pieces[cur].id === want || jump >= 0) want = "";
+}
+async function load(first) {
+  try {
+    const res = await fetch("pieces.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("fetch " + res.status);
+    stat = await res.json();
+    merge(first);
+  } catch (e) {
+    if (first && !pieces.length) $("count").textContent = "The pictures didn't load. Reload the page to try again.";
+  }
+}
+const text = (v, n) => typeof v === "string" ? v.slice(0, n) : "";
+function liveRec(d) {
+  if (!d || typeof d.id !== "string" || !/^[A-Za-z0-9-]{3,60}$/.test(d.id) || typeof d.code !== "string" || d.code.length > 60000 || isNaN(Date.parse(d.ts))) return null;
+  const f = Array.isArray(d.focus) && d.focus.length === 2 ? [clamp(+d.focus[0] || 0.5, 0, 1), clamp(+d.focus[1] || 0.4, 0, 1)] : null;
+  return { id: d.id, ts: String(d.ts), kind: "news", title: text(d.title, 80) || "Untitled", headline: text(d.headline, 300), note: text(d.note, 400), source: text(d.source, 80), url: /^https:\/\//.test(d.url || "") ? String(d.url) : "", focus: f, code: d.code };
+}
+async function live() {
+  try {
+    if (!window.claude || typeof window.claude.use !== "function") return;
+    const db = await window.claude.use("db");
+    if (!db) return;
+    db.collection("live").onSnapshot(snap => {
+      liveRecs = snap.docs.filter(d => d.exists).map(d => liveRec(d.data())).filter(Boolean);
+      merge(false);
+    }, () => {});
+  } catch (e) {}
+}
+function tap(e) {
+  if (!ready) return;
+  if (z > 1.01) { glide(1, 550, 0); return; }
+  const r = vp.getBoundingClientRect();
+  fx = clamp((e.clientX - r.left) / r.width, 0, 1); fy = clamp((e.clientY - r.top) / r.height, 0, 1);
+  glide(zm, 600, 0);
+}
+vp.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, t: performance.now(), fx: clamp(fx, 0.5 / z, 1 - 0.5 / z), fy: clamp(fy, 0.5 / z, 1 - 0.5 / z), moved: false, id: e.pointerId }; if (z > 1.01) { try { vp.setPointerCapture(e.pointerId); } catch (err) {} } });
+vp.addEventListener("pointermove", e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 8) drag.moved = true;
+  if (z > 1.01 && drag.moved) { stop(); fx = clamp(drag.fx - dx / (W * z), 0.5 / z, 1 - 0.5 / z); fy = clamp(drag.fy - dy / (H * z), 0.5 / z, 1 - 0.5 / z); draw(); }
+});
+vp.addEventListener("pointerup", e => { const d = drag; drag = null; if (d && !d.moved && performance.now() - d.t < 600) tap(e); });
+vp.addEventListener("pointercancel", () => { drag = null; });
+zoom.addEventListener("input", () => { stop(); z = +zoom.value; draw(); });
+$("reveal").addEventListener("click", pullBack);
+$("newer").addEventListener("click", () => { if (cur < pieces.length - 1) show(cur + 1, false); });
+$("older").addEventListener("click", () => { if (cur > 0) show(cur - 1, false); });
+days.addEventListener("click", e => {
+  const b = e.target.closest(".thumb");
+  if (!b) return;
+  const i = pieces.findIndex(p => p.id === b.dataset.id);
+  if (i >= 0) { show(i, false); if (window.innerWidth < 940) $("stamp").scrollIntoView({ behavior: calm ? "auto" : "smooth", block: "start" }); }
+});
+window.addEventListener("hashchange", () => { want = ""; const i = pieces.findIndex(p => "#p-" + p.id === location.hash); if (i >= 0 && i !== cur) show(i, false); });
+document.addEventListener("keydown", e => {
+  if (e.target === zoom || e.altKey || e.metaKey || e.ctrlKey) return;
+  if (e.key === "ArrowLeft" && cur < pieces.length - 1) show(cur + 1, false);
+  if (e.key === "ArrowRight" && cur > 0) show(cur - 1, false);
+});
+async function start() {
+  try { if (document.fonts && document.fonts.load) await Promise.race([document.fonts.load('800 12px "JetBrains Mono"'), new Promise(r => setTimeout(r, 2500))]); } catch (e) {}
+  relayout();
+  if (window.ResizeObserver) new ResizeObserver(relayout).observe(stage); else window.addEventListener("resize", relayout);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(relayout);
+  await load(true);
+  live();
+  setInterval(() => load(false), 300000);
+}
+start();
+})();
+</script>
+</body>
+</html>
