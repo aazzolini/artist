@@ -1,0 +1,23 @@
+# One-click deploy: Render Dashboard > New > Blueprint > pick this repo.
+# The "starter" plan (~$7/mo) is needed for the persistent disk that keeps orders.db.
+services:
+  - type: web
+    name: shop
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: BASE_URL
+        sync: false
+      - key: STORE_NAME
+        value: My Store
+      - key: ADMIN_TOKEN
+        generateValue: true

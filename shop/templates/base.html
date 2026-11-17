@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ store_name }}{% endblock %}</title>
+  <style>
+    :root { --fg:#1a1a1a; --muted:#666; --bg:#fafafa; --card:#fff; --accent:#5b4cf5; --line:#e5e5e5; }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg:#eee; --muted:#aaa; --bg:#111; --card:#1b1b1b; --accent:#8f84ff; --line:#2c2c2c; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font:16px/1.5 system-ui, sans-serif; color:var(--fg); background:var(--bg); }
+    main { max-width: 880px; margin: 0 auto; padding: 32px 16px; }
+    h1 { margin: 0 0 24px; }
+    .grid { display:grid; gap:16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px;
+            display:flex; flex-direction:column; gap:8px; }
+    .card p { color:var(--muted); margin:0; flex:1; }
+    .price { font-weight:600; font-size:1.1em; }
+    button, .btn { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 16px;
+                   font:inherit; cursor:pointer; text-decoration:none; display:inline-block; text-align:center; }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body><main>{% block body %}{% endblock %}</main></body>
+</html>

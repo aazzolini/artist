@@ -1,0 +1,10 @@
+[
+  {
+    "id": "starter-guide",
+    "name": "Starter Guide (sample)",
+    "description": "Replace this with your own product: an ebook, template pack, presets, a course PDF, source code...",
+    "price_cents": 900,
+    "currency": "usd",
+    "file": "files/starter-guide.txt"
+  }
+]

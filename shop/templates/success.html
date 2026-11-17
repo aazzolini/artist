@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Thank you · {{ store_name }}{% endblock %}
+{% block body %}
+<h1>Thank you!</h1>
+<p>Your purchase of <strong>{{ product.name }}</strong> is complete.</p>
+<p><a class="btn" href="{{ link }}">Download {{ product.name }}</a></p>
+<p class="muted">This link works {{ settings.max_downloads }} times for {{ settings.link_ttl_hours }} hours.
+{% if email and settings.smtp_host %}We also emailed it to {{ email }}.{% else %}Bookmark it now.{% endif %}</p>
+{% endblock %}
