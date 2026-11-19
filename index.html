@@ -42,6 +42,7 @@ button[aria-disabled="true"] { color: var(--muted); cursor: default; border-colo
 #vp { position: relative; overflow: hidden; width: 100%; aspect-ratio: 4 / 5; background: var(--ground); border-radius: 6px; box-shadow: 0 0 0 1px var(--line); cursor: zoom-in; touch-action: pan-y; }
 .aa { position: absolute; left: 0; top: 0; white-space: pre; font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Roboto Mono", monospace; font-size: 12px; font-weight: 800; line-height: 9px; letter-spacing: 0; font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; font-kerning: none; color: #ffffff; transform-origin: 0 0; -webkit-user-select: none; user-select: none; pointer-events: none; }
 #probe { visibility: hidden; }
+#far { position: absolute; left: 0; top: 0; transform-origin: 0 0; image-rendering: pixelated; pointer-events: none; visibility: hidden; }
 .controls { display: flex; align-items: center; gap: 12px; max-width: 560px; margin-top: 14px; }
 .controls label { color: var(--muted); }
 .controls input { flex: 1; min-width: 0; accent-color: var(--accent); height: 28px; }
@@ -83,7 +84,7 @@ footer p { margin: 0 0 6px; }
   <main class="cols">
     <section class="viewer" aria-label="Selected picture">
       <div class="stamp"><span id="stamp">&nbsp;</span><div class="nav"><button id="newer" type="button">Newer</button><button id="older" type="button">Older</button></div></div>
-      <div id="stage"><div id="vp" role="img" aria-label="Picture made of text"><div id="probe" class="aa" aria-hidden="true"></div><div id="art" class="aa" aria-hidden="true"></div></div></div>
+      <div id="stage"><div id="vp" role="img" aria-label="Picture made of text"><div id="probe" class="aa" aria-hidden="true"></div><canvas id="far" aria-hidden="true"></canvas><div id="art" class="aa" aria-hidden="true"></div></div></div>
       <div class="controls"><label for="zoom">Zoom</label><input type="range" id="zoom" min="1" max="12" step="1" value="1"><button id="reveal" type="button">Pull back</button></div>
       <p class="readout" id="info" aria-live="polite"></p>
       <article class="caption"><h2 id="title">&nbsp;</h2><p id="headline"></p><p id="note"></p><p id="src"></p></article>
@@ -94,7 +95,7 @@ footer p { margin: 0 0 6px; }
     </section>
   </main>
   <footer>
-    <p>Every picture is plain text: several hundred thousand characters, each as small as one screen pixel, so your screen blends them into tones. Each letter is chosen for its weight and for its shape, so the ink sits where the light falls and the strokes run along the edges.</p>
+    <p>Every picture is plain text: several hundred thousand characters, each as small as one screen pixel. Each letter is chosen for its weight and for its shape, so the ink sits where the light falls and the strokes run along the edges. Zoomed out, the page shows the ink each letter leaves in its own pixel; zoom in and it types the letters themselves.</p>
     <p>The pictures are illustrations made by Claude from the linked reports. They are not photographs of the events.</p>
   </footer>
 </div>
@@ -109,13 +110,13 @@ let PREF = 0, fixed = false, PW = 2, PH = 3;
 try { const sv = JSON.parse(localStorage.getItem("nil-size") || "null"); if (sv && sv.s >= 1 && sv.s <= 2 && Date.now() - sv.t < 2592e5) PREF = sv.s; } catch (e) {}
 { const mq = /[?&]size=([0-4])\b/.exec(location.search); if (mq) { PREF = +mq[1]; fixed = true; } }
 const $ = id => document.getElementById(id);
-const stage = $("stage"), vp = $("vp"), art = $("art"), probe = $("probe"), zoom = $("zoom"), info = $("info"), days = $("days");
+const stage = $("stage"), vp = $("vp"), art = $("art"), far = $("far"), probe = $("probe"), zoom = $("zoom"), info = $("info"), days = $("days");
 const calm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 let pieces = [], cur = -1, cw = 0, ch = 0, C = 0, R = 0, M = 1, sx = 1, sy = 1, zm = 8, W = 0, H = 0, z = 1, fx = 0.5, fy = 0.4, raf = 0, key = "", pals = null, dmax = 0, token = 0, ready = false, drag = null;
 const cache = new Map(), thumbs = new Map();
 let stat = [], liveRecs = [], want = (location.hash || "").replace(/^#p-/, ""), jobs = Promise.resolve();
 const pts = new Map();
-let pinch = null, touched = -1e9, chase = 0;
+let pinch = null, touched = -1e9, chase = 0, rowsArr = [], win = null, farOK = false;
 // This tab remembers when it is sitting on the newest picture, so a reload opens on the newest again instead of the one named in the address.
 const newest = { get: () => { try { return sessionStorage.getItem("nil-newest") || ""; } catch (e) { return ""; } }, set: v => { try { if (v) sessionStorage.setItem("nil-newest", v); else sessionStorage.removeItem("nil-newest"); } catch (e) {} } };
 if (want && newest.get() === want) want = "";
@@ -261,7 +262,7 @@ function tune() {
 // falls, and whose strokes run along the edge, wins. In flat areas the pick stays random, so no pattern forms.
 function dither(F, P, G) {
   let e0 = new Float32Array(C + 2), e1 = new Float32Array(C + 2);
-  const row = new Uint8Array(C), rows = [], w2 = 2 * C, t = new Float32Array(6), flat = 0.0054 * dmax * dmax, ks = dmax / 255;
+  const row = new Uint8Array(C), rows = [], pick = new Uint8Array(C * R).fill(255), w2 = 2 * C, t = new Float32Array(6), flat = 0.0054 * dmax * dmax, ks = dmax / 255;
   for (let j = 0; j < R; j++) {
     const dir = j & 1 ? -1 : 1;
     for (let n = 0; n < C; n++) {
@@ -289,14 +290,14 @@ function dither(F, P, G) {
         }
       }
       if (k < 0) k = pal.lo[lv] + Math.floor(hs(i + 57, j + 131) * (pal.hi[lv] - pal.lo[lv] + 1));
-      row[i] = pal.code[k];
+      row[i] = pal.code[k]; pick[q] = k;
       const er = clamp(v - pal.dens[k], -dmax / 2, dmax / 2);
       e0[i + 1 + dir] += er * 0.4375; e1[i + 1 - dir] += er * 0.1875; e1[i + 1] += er * 0.3125; e1[i + 1 + dir] += er * 0.0625;
     }
     rows.push(String.fromCharCode.apply(null, row));
     const tmp = e0; e0 = e1; e1 = tmp; e1.fill(0);
   }
-  return rows.join("\n");
+  return { rows, pick };
 }
 function geom(m) {
   const dpr = window.devicePixelRatio || 1;
@@ -316,11 +317,58 @@ function relayout() {
   if (cur >= 0) show(cur, false);
 }
 const fmt = v => String(Math.round(v * 10) / 10);
+// Zoomed out, a letter is a pixel or two and there are up to a million and a half of them: moving that much live text is slow.
+// So the far view is painted once on a canvas, each letter as the ink it would leave in its own pixels, and the canvas is what moves.
+// Once the letters are five screen pixels wide the page switches to the letters themselves, typing only the part in view.
+function paintFar(pick, P) {
+  const w = C * PW, h = R * PH;
+  far.width = w; far.height = h; far.style.width = W + "px"; far.style.height = H + "px";
+  const cx = far.getContext("2d"), im = cx.createImageData(w, h), d = im.data, wt = [];
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {            // how much of each of the six parts of a cell falls in each of its pixels
+    const a = new Float32Array(6); let sum = 0;
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 2; c++) {
+      const ox = Math.max(0, Math.min((x + 1) / PW, (c + 1) / 2) - Math.max(x / PW, c / 2)), oy = Math.max(0, Math.min((y + 1) / PH, (r + 1) / 3) - Math.max(y / PH, r / 3));
+      a[r * 2 + c] = ox * oy; sum += ox * oy;
+    }
+    for (let u = 0; u < 6; u++) a[u] /= sum;
+    wt.push(a);
+  }
+  for (let j = 0; j < R; j++) for (let i = 0; i < C; i++) {
+    const q = j * C + i, k = pick[q];
+    if (k === 255) continue;
+    const pal = pals[P ? P[q] : 0], dg = pal.dens[k], o = k * 6, sh = pal.shape;
+    for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
+      const a = wt[y * PW + x];
+      let v = 0;
+      for (let u = 0; u < 6; u++) v += a[u] * (1 + sh[o + u]);
+      v *= dg;
+      const t = ((j * PH + y) * w + i * PW + x) * 4;
+      d[t] = d[t + 1] = d[t + 2] = 255; d[t + 3] = v <= 0 ? 0 : v >= 1 ? 255 : Math.round(v * 255);
+    }
+  }
+  cx.putImageData(im, 0, 0);
+}
 function draw() {
   if (!ready) return;
   const dpr = window.devicePixelRatio || 1, cxn = clamp(fx, 0.5 / z, 1 - 0.5 / z), cyn = clamp(fy, 0.5 / z, 1 - 0.5 / z);
   const tx = Math.round((W / 2 - cxn * W * z) * dpr) / dpr, ty = Math.round((H / 2 - cyn * H * z) * dpr) / dpr;
-  art.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + (sx * z).toFixed(6) + "," + (sy * z).toFixed(6) + ")";
+  if (!farOK || PW * z >= 5) {
+    const x0 = cxn - 0.5 / z, y0 = cyn - 0.5 / z, m = 0.35 / z;
+    const a = Math.max(0, Math.floor(x0 * C)), b = Math.max(0, Math.floor(y0 * R)), c = Math.min(C, Math.ceil((x0 + 1 / z) * C)), e = Math.min(R, Math.ceil((y0 + 1 / z) * R));
+    if (!win || a < win[0] || b < win[1] || c > win[2] || e > win[3]) {
+      win = [Math.max(0, Math.floor((x0 - m) * C)), Math.max(0, Math.floor((y0 - m) * R)), Math.min(C, Math.ceil((x0 + 1 / z + m) * C)), Math.min(R, Math.ceil((y0 + 1 / z + m) * R))];
+      const out = [];
+      for (let j = win[1]; j < win[3]; j++) out.push(rowsArr[j].substring(win[0], win[2]));
+      art.textContent = out.join("\n");
+    }
+    art.style.transform = "translate(" + (tx + win[0] * (W / C) * z) + "px," + (ty + win[1] * (H / R) * z) + "px) scale(" + (sx * z).toFixed(6) + "," + (sy * z).toFixed(6) + ")";
+    art.style.visibility = "visible"; far.style.visibility = "hidden";
+  } else {
+    far.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + z.toFixed(6) + ")";
+    far.style.visibility = "visible"; art.style.visibility = "hidden";
+    if (win) { win = null; art.textContent = ""; }
+  }
+  vp.dataset.tx = String(tx); vp.dataset.ty = String(ty); vp.dataset.view = art.style.visibility === "visible" ? "letters" : "far";
   info.textContent = (C * R).toLocaleString() + " letters · each " + fmt(PW * z) + " × " + fmt(PH * z) + " screen pixels";
   vp.dataset.z = String(z);
   vp.style.touchAction = z > 1.01 ? "none" : "pan-y"; vp.style.cursor = z > 1.01 ? "grab" : "zoom-in";
@@ -414,7 +462,10 @@ async function show(i, reveal) {
       F = Float32Array.from(f.res.F); P = f.res.P;
       for (let i = 0; i < F.length; i++) if (!(F[i] > 0.004)) F[i] = -1;
     }
-    art.textContent = dither(F, P, G);
+    const typed = dither(F, P, G);
+    rowsArr = typed.rows; win = null; art.textContent = "";
+    farOK = M <= 2;
+    if (farOK) paintFar(typed.pick, P);
     ready = true;
     const fo = p.focus || [0.5, 0.4]; fx = fo[0]; fy = fo[1];
     if (reveal) pullBack(); else { z = 1; zoom.value = 1; draw(); }
