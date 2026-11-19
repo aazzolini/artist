@@ -236,14 +236,14 @@ function palette(list, sh) {
     if (c < 0) c = d = best;
     lo[q] = a; hi[q] = b; loW[q] = c; hiW[q] = d;
   }
-  const shape = new Float32Array(n * 6), ox = new Float32Array(n), oy = new Float32Array(n);
+  const shape = new Float32Array(n * 6), ox = new Float32Array(n), oy = new Float32Array(n), sn = new Float32Array(n);
   for (let k = 0; k < n; k++) {
     const s = sh && sh[code[k]];
     if (!s) continue;
-    for (let u = 0; u < 6; u++) shape[k * 6 + u] = s.r[u] - 1;
-    ox[k] = s.ox; oy[k] = s.oy;
+    for (let u = 0; u < 6; u++) { shape[k * 6 + u] = s.r[u] - 1; sn[k] += (s.r[u] - 1) * (s.r[u] - 1); }
+    sn[k] = Math.sqrt(sn[k]); ox[k] = s.ox; oy[k] = s.oy;
   }
-  return { code, dens, lo, hi, loW, hiW, shape, ox, oy, shaped: !!sh };
+  return { code, dens, lo, hi, loW, hiW, shape, sn, ox, oy, shaped: !!sh };
 }
 function tune() {
   let list = null, m = PREF;
@@ -258,11 +258,18 @@ function tune() {
   pals = [palette(list, sh), palette(list.filter(a => a[0] === 32 || a[0] === 45 || a[0] === 126 || a[0] === 61 || a[1] > eq * 1.03), sh)];
 }
 // Picks a letter for every cell. Tone decides which letters are candidates (the error is passed on to the neighbours, as before).
-// Where the picture changes inside the cell, G (six samples a cell) decides among them: the letter whose ink falls where the light
-// falls, and whose strokes run along the edge, wins. In flat areas the pick stays random, so no pattern forms.
-function dither(F, P, G) {
+// Where an edge or a thin line of the picture crosses the cell, the letter is chosen to follow it: the one whose strokes run along it,
+// and whose ink sits on its bright side, wins, as long as its weight stays near the tone wanted. The edge is read from the cell and its
+// eight neighbours (slope for edges, curvature for thin lines). In flat areas the pick stays random, so no pattern forms.
+// st, if given, collects what was done (web/edges.js uses it to check that the letters really follow the edges).
+const EDGE = 0.05, KAP = 0.06, TONE = 30, SIDE = 0.5;
+function dither(F, P, G, st) {
   let e0 = new Float32Array(C + 2), e1 = new Float32Array(C + 2);
-  const row = new Uint8Array(C), rows = [], pick = new Uint8Array(C * R).fill(255), w2 = 2 * C, t = new Float32Array(6), flat = 0.0054 * dmax * dmax, ks = dmax / 255;
+  const row = new Uint8Array(C), rows = [], pick = new Uint8Array(C * R).fill(255), w2 = 2 * C, t = new Float32Array(6), E2 = EDGE * EDGE;
+  const Z = new Float32Array(C * R);                                    // the tones with the empty cells as black, for reading neighbours
+  for (let q = 0; q < Z.length; q++) Z[q] = F[q] < 0 ? 0 : F[q];
+  const at = (i, j) => Z[(j < 0 ? 0 : j >= R ? R - 1 : j) * C + (i < 0 ? 0 : i >= C ? C - 1 : i)];
+  if (st) { st.all = 0; st.n = 0; st.a = 0; st.b = 0; st.h = new Array(21).fill(0); st.c = [{}, {}, {}, {}, {}]; st.d = [{}, {}, {}, {}, {}]; }
   for (let j = 0; j < R; j++) {
     const dir = j & 1 ? -1 : 1;
     for (let n = 0; n < C; n++) {
@@ -271,21 +278,39 @@ function dither(F, P, G) {
       const pal = pals[P ? P[q] : 0], v = f * dmax + e0[i + 1];
       const lv = v <= 0 ? 0 : v >= dmax ? 255 : Math.round(v / dmax * 255);
       let k = -1;
-      if (G && pal.shaped) {
-        const b = 3 * j * w2 + 2 * i;
-        t[0] = G[b]; t[1] = G[b + 1]; t[2] = G[b + w2]; t[3] = G[b + w2 + 1]; t[4] = G[b + 2 * w2]; t[5] = G[b + 2 * w2 + 1];
-        const mean = (t[0] + t[1] + t[2] + t[3] + t[4] + t[5]) / 6;
-        let s2 = 0;
-        for (let u = 0; u < 6; u++) { t[u] = (t[u] - mean) * ks; s2 += t[u] * t[u]; }
-        if (s2 > flat) {
-          const gx = (t[1] + t[3] + t[5] - t[0] - t[2] - t[4]) / 3 * (2 / PW), gy = (t[4] + t[5] - t[0] - t[1]) / 2 * (1.5 / PH), gg = gx * gx + gy * gy + 1e-12;
-          const ex = (gx * gx - gy * gy) / gg, ey = 2 * gx * gy / gg, sh = pal.shape, de = pal.dens;
-          let best = 1e9;
-          for (let c = pal.loW[lv]; c <= pal.hiW[lv]; c++) {
-            const dg = de[c], o = c * 6;
-            let cost = 2 * (dg - v) * (dg - v) - 0.35 * s2 * (pal.ox[c] * ex + pal.oy[c] * ey);
-            for (let u = 0; u < 6; u++) { const d = dg * sh[o + u] - t[u]; cost += d * d; }
-            if (cost < best) { best = cost; k = c; }
+      if (pal.shaped) {
+        let a, b, c, d, e, g, h, m;
+        if (i > 0 && i < C - 1 && j > 0 && j < R - 1) { const u = q - C, w = q + C; a = Z[u - 1]; b = Z[u]; c = Z[u + 1]; d = Z[q - 1]; e = Z[q + 1]; g = Z[w - 1]; h = Z[w]; m = Z[w + 1]; }
+        else { a = at(i - 1, j - 1); b = at(i, j - 1); c = at(i + 1, j - 1); d = at(i - 1, j); e = at(i + 1, j); g = at(i - 1, j + 1); h = at(i, j + 1); m = at(i + 1, j + 1); }
+        const dx = (c + 2 * e + m - a - 2 * d - g) / 8, dy = (g + 2 * h + m - a - 2 * b - c) / 8;                      // slope, per letter
+        const xx = (a - 2 * b + c + 2 * (d - 2 * f + e) + g - 2 * h + m) / 4, yy = (a - 2 * d + g + 2 * (b - 2 * f + h) + c - 2 * e + m) / 4, xy = (m - c - g + a) / 4;
+        const tr = xx + yy, dm = Math.sqrt((xx - yy) * (xx - yy) + 4 * xy * xy) + 1e-12, lam = (Math.abs(tr) + dm) / 2;   // curvature across a thin line
+        const s2 = dx * dx + dy * dy + KAP * lam * lam;
+        if (st) { st.all++; st.h[Math.min(20, Math.floor(Math.sqrt(s2) * 100))]++; }
+        if (s2 > E2) {
+          // Which way the edge runs, as a doubled angle (so that both sides of a line agree), first in letters, then in screen pixels.
+          const w = (tr < 0 ? -1 : 1) * KAP * lam * lam / dm, th = Math.atan2(2 * dx * dy + w * 2 * xy, dx * dx - dy * dy + w * (xx - yy)) / 2;
+          const nx = Math.cos(th) / PW, ny = Math.sin(th) / PH, nn = nx * nx + ny * ny, ex = (nx * nx - ny * ny) / nn, ey = 2 * nx * ny / nn;
+          let tn = 0;
+          if (G) {
+            const o = 3 * j * w2 + 2 * i;
+            t[0] = G[o]; t[1] = G[o + 1]; t[2] = G[o + w2]; t[3] = G[o + w2 + 1]; t[4] = G[o + 2 * w2]; t[5] = G[o + 2 * w2 + 1];
+            const mean = (t[0] + t[1] + t[2] + t[3] + t[4] + t[5]) / 6;
+            for (let u = 0; u < 6; u++) { t[u] -= mean; tn += t[u] * t[u]; }
+            tn = Math.sqrt(tn);
+          }
+          const sh = pal.shape, de = pal.dens, sn = pal.sn, side = tn > 5;
+          let best = -1e9;
+          for (let c2 = pal.loW[lv]; c2 <= pal.hiW[lv]; c2++) {
+            const o = c2 * 6, dd = (de[c2] - v) / dmax;
+            let sc = pal.ox[c2] * ex + pal.oy[c2] * ey - TONE * dd * dd;
+            if (side && sn[c2] > 0.05) { let dot = 0; for (let u = 0; u < 6; u++) dot += sh[o + u] * t[u]; sc += SIDE * dot / (sn[c2] * tn); }
+            if (sc > best) { best = sc; k = c2; }
+          }
+          if (st) {
+            const ko = pal.lo[lv] + Math.floor(hs(i + 57, j + 131) * (pal.hi[lv] - pal.lo[lv] + 1)), cl = ex > 0.7 ? 0 : ex < -0.7 ? 1 : ey > 0.7 ? 2 : ey < -0.7 ? 3 : 4;
+            st.n++; st.a += pal.ox[k] * ex + pal.oy[k] * ey; st.b += pal.ox[ko] * ex + pal.oy[ko] * ey;
+            st.c[cl][pal.code[k]] = (st.c[cl][pal.code[k]] || 0) + 1; st.d[cl][pal.code[ko]] = (st.d[cl][pal.code[ko]] || 0) + 1;
           }
         }
       }
