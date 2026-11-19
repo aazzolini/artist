@@ -94,13 +94,20 @@ footer p { margin: 0 0 6px; }
     </section>
   </main>
   <footer>
-    <p>Every picture is plain text: a few hundred thousand characters, each sized to 2 × 3 screen pixels so your screen blends them into tones.</p>
+    <p>Every picture is plain text: several hundred thousand characters, each as small as one screen pixel, so your screen blends them into tones. Each letter is chosen for its weight and for its shape, so the ink sits where the light falls and the strokes run along the edges.</p>
     <p>The pictures are illustrations made by Claude from the linked reports. They are not photographs of the events.</p>
   </footer>
 </div>
 <script>
 (() => {
-const FS = 12, DROP = "acemnorsuvwxz", MAXC = 640;
+const FS = 12, DROP = "acemnorsuvwxz", MAXC = 1400;
+// SIZES: screen pixels per letter, smallest first. Whole pixels only: a pitch of one and a half pixels prints stripes.
+// PREF is the size asked for: one letter to a screen pixel if the device can keep up. A device that needs too long to type a picture
+// drops back a size and remembers that for three days; ?size=0..4 in the address forces a size (2 is the old 2 × 3).
+const SIZES = [[1, 1], [1, 2], [2, 3], [4, 6], [6, 9]], LIMIT = 1700;
+let PREF = 0, fixed = false, PW = 2, PH = 3;
+try { const sv = JSON.parse(localStorage.getItem("nil-size") || "null"); if (sv && sv.s >= 1 && sv.s <= 2 && Date.now() - sv.t < 2592e5) PREF = sv.s; } catch (e) {}
+{ const mq = /[?&]size=([0-4])\b/.exec(location.search); if (mq) { PREF = +mq[1]; fixed = true; } }
 const $ = id => document.getElementById(id);
 const stage = $("stage"), vp = $("vp"), art = $("art"), probe = $("probe"), zoom = $("zoom"), info = $("info"), days = $("days");
 const calm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -184,31 +191,77 @@ function calibrate(kx, ky) {
   }
   return out;
 }
-function palette(list) {
+// The shape of every letter: how its ink is spread over the six parts of its cell (2 across, 3 down, as a share of the average),
+// and which way its strokes run (ox, oy: a doubled-angle vector, long when the strokes agree on one direction, as in / or |).
+function shapes() {
+  const st = getComputedStyle(art), cv = document.createElement("canvas"), n = 3, gw = 12, gh = Math.max(3, Math.round(gw * PH / PW / 3) * 3), w = n * gw, h = n * gh;
+  cv.width = w; cv.height = h;
+  const cx = cv.getContext("2d", { willReadFrequently: true }), out = {}, kx = gw / cw, ky = gh / ch;
+  cx.font = st.fontWeight + " " + FS + "px " + st.fontFamily;
+  const mt = cx.measureText("M"), asc = mt.fontBoundingBoxAscent, dsc = mt.fontBoundingBoxDescent;
+  const base = asc > 0 && dsc >= 0 ? ch / 2 + (asc - dsc) / 2 : 0.8 * ch;      // where the baseline sits inside a line of the page's own text
+  for (let c = 32; c < 127; c++) {
+    const s = String.fromCharCode(c);
+    cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, w, h); cx.setTransform(kx, 0, 0, ky, 0, 0);
+    cx.font = st.fontWeight + " " + FS + "px " + st.fontFamily; cx.fillStyle = "#fff"; cx.textBaseline = "alphabetic";
+    for (let r = -2; r < n + 2; r++) for (let k = -1; k <= n; k++) cx.fillText(s, k * cw, r * ch + base);
+    const d = cx.getImageData(0, 0, w, h).data, a = (x, y) => d[(((y + h) % h) * w + ((x + w) % w)) * 4 + 3] / 255;
+    const q = [0, 0, 0, 0, 0, 0];
+    let sum = 0, jxx = 0, jyy = 0, jxy = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const v = a(x, y), gx = a(x + 1, y) - a(x - 1, y), gy = a(x, y + 1) - a(x, y - 1);
+      sum += v; q[Math.floor((y % gh) * 3 / gh) * 2 + Math.floor((x % gw) * 2 / gw)] += v;
+      jxx += gx * gx; jyy += gy * gy; jxy += gx * gy;
+    }
+    const mean = sum / 6;
+    out[c] = { r: mean > 1e-6 ? q.map(v => v / mean) : [1, 1, 1, 1, 1, 1], ox: (jxx - jyy) / (jxx + jyy + 1e-6), oy: 2 * jxy / (jxx + jyy + 1e-6) };
+  }
+  return out;
+}
+function palette(list, sh) {
   list = list.slice().sort((a, b) => a[1] - b[1]);
-  const code = list.map(a => a[0]), dens = list.map(a => a[1]), lo = new Uint8Array(256), hi = new Uint8Array(256), tol = 0.03 * dmax;
+  const code = list.map(a => a[0]), dens = list.map(a => a[1]), n = code.length, tol = 0.03 * dmax, wide = 0.14 * dmax;
+  const lo = new Uint8Array(256), hi = new Uint8Array(256), loW = new Uint8Array(256), hiW = new Uint8Array(256);
   for (let q = 0; q < 256; q++) {
     const v = q / 255 * dmax;
-    let best = 0, a = -1, b = -1;
-    for (let k = 0; k < dens.length; k++) { if (Math.abs(dens[k] - v) < Math.abs(dens[best] - v)) best = k; if (Math.abs(dens[k] - v) <= tol) { if (a < 0) a = k; b = k; } }
+    let best = 0, a = -1, b = -1, c = -1, d = -1;
+    for (let k = 0; k < n; k++) {
+      const gap = Math.abs(dens[k] - v);
+      if (gap < Math.abs(dens[best] - v)) best = k;
+      if (gap <= tol) { if (a < 0) a = k; b = k; }
+      if (gap <= wide) { if (c < 0) c = k; d = k; }
+    }
     if (a < 0) a = b = best;
-    lo[q] = a; hi[q] = b;
+    if (c < 0) c = d = best;
+    lo[q] = a; hi[q] = b; loW[q] = c; hiW[q] = d;
   }
-  return { code, dens, lo, hi };
+  const shape = new Float32Array(n * 6), ox = new Float32Array(n), oy = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    const s = sh && sh[code[k]];
+    if (!s) continue;
+    for (let u = 0; u < 6; u++) shape[k * 6 + u] = s.r[u] - 1;
+    ox[k] = s.ox; oy[k] = s.oy;
+  }
+  return { code, dens, lo, hi, loW, hiW, shape, ox, oy, shaped: !!sh };
 }
 function tune() {
-  let list = null, m = 1;
-  try { for (; m <= 3; m++) { list = calibrate(2 * m / cw, 3 * m / ch); if (top(list) > 0.04) break; list = null; } } catch (e) { list = null; }
-  if (!list) { m = 1; list = []; const fb = " 00`06.07'12,12_13-14~14:14;19!22^22*23/24+28>29=29<29)31(32|32?34734L34[35]35t35l36T36J36}37i37{37%37j38f39Y40140y41F41I42C43244345V46546k46#47447X47Z47P48S48A48h48$50p50q51051651E51&51U51O52852952b53G53D53d53K53H54@55Q56R56N56g56W57M58B58"; for (let i = 0; i < fb.length; i += 3) list.push([fb.charCodeAt(i), +fb.substr(i + 1, 2) / 100]); }
+  let list = null, m = PREF;
+  try { for (; m < SIZES.length; m++) { list = calibrate(SIZES[m][0] / cw, SIZES[m][1] / ch); if (top(list) > 0.04) break; list = null; } } catch (e) { list = null; }
+  if (!list) { m = Math.max(PREF, 1); list = []; const fb = " 00`06.07'12,12_13-14~14:14;19!22^22*23/24+28>29=29<29)31(32|32?34734L34[35]35t35l36T36J36}37i37{37%37j38f39Y40140y41F41I42C43244345V46546k46#47447X47Z47P48S48A48h48$50p50q51051651E51&51U51O52852952b53G53D53d53K53H54@55Q56R56N56g56W57M58B58"; for (let i = 0; i < fb.length; i += 3) list.push([fb.charCodeAt(i), +fb.substr(i + 1, 2) / 100]); }
   if (m !== M) geom(m);
+  let sh = null;
+  try { sh = shapes(); } catch (e) { sh = null; }
   list = list.filter(a => DROP.indexOf(String.fromCharCode(a[0])) < 0);
   dmax = top(list);
   const eq = list.find(a => a[0] === 61)[1];
-  pals = [palette(list), palette(list.filter(a => a[0] === 32 || a[0] === 45 || a[0] === 126 || a[0] === 61 || a[1] > eq * 1.03))];
+  pals = [palette(list, sh), palette(list.filter(a => a[0] === 32 || a[0] === 45 || a[0] === 126 || a[0] === 61 || a[1] > eq * 1.03), sh)];
 }
-function dither(F, P) {
+// Picks a letter for every cell. Tone decides which letters are candidates (the error is passed on to the neighbours, as before).
+// Where the picture changes inside the cell, G (six samples a cell) decides among them: the letter whose ink falls where the light
+// falls, and whose strokes run along the edge, wins. In flat areas the pick stays random, so no pattern forms.
+function dither(F, P, G) {
   let e0 = new Float32Array(C + 2), e1 = new Float32Array(C + 2);
-  const row = new Uint8Array(C), rows = [];
+  const row = new Uint8Array(C), rows = [], w2 = 2 * C, t = new Float32Array(6), flat = 0.0054 * dmax * dmax, ks = dmax / 255;
   for (let j = 0; j < R; j++) {
     const dir = j & 1 ? -1 : 1;
     for (let n = 0; n < C; n++) {
@@ -216,7 +269,26 @@ function dither(F, P) {
       if (f < 0) { row[i] = 32; continue; }
       const pal = pals[P ? P[q] : 0], v = f * dmax + e0[i + 1];
       const lv = v <= 0 ? 0 : v >= dmax ? 255 : Math.round(v / dmax * 255);
-      const k = pal.lo[lv] + Math.floor(hs(i + 57, j + 131) * (pal.hi[lv] - pal.lo[lv] + 1));
+      let k = -1;
+      if (G && pal.shaped) {
+        const b = 3 * j * w2 + 2 * i;
+        t[0] = G[b]; t[1] = G[b + 1]; t[2] = G[b + w2]; t[3] = G[b + w2 + 1]; t[4] = G[b + 2 * w2]; t[5] = G[b + 2 * w2 + 1];
+        const mean = (t[0] + t[1] + t[2] + t[3] + t[4] + t[5]) / 6;
+        let s2 = 0;
+        for (let u = 0; u < 6; u++) { t[u] = (t[u] - mean) * ks; s2 += t[u] * t[u]; }
+        if (s2 > flat) {
+          const gx = (t[1] + t[3] + t[5] - t[0] - t[2] - t[4]) / 3 * (2 / PW), gy = (t[4] + t[5] - t[0] - t[1]) / 2 * (1.5 / PH), gg = gx * gx + gy * gy + 1e-12;
+          const ex = (gx * gx - gy * gy) / gg, ey = 2 * gx * gy / gg, sh = pal.shape, de = pal.dens;
+          let best = 1e9;
+          for (let c = pal.loW[lv]; c <= pal.hiW[lv]; c++) {
+            const dg = de[c], o = c * 6;
+            let cost = 2 * (dg - v) * (dg - v) - 0.35 * s2 * (pal.ox[c] * ex + pal.oy[c] * ey);
+            for (let u = 0; u < 6; u++) { const d = dg * sh[o + u] - t[u]; cost += d * d; }
+            if (cost < best) { best = cost; k = c; }
+          }
+        }
+      }
+      if (k < 0) k = pal.lo[lv] + Math.floor(hs(i + 57, j + 131) * (pal.hi[lv] - pal.lo[lv] + 1));
       row[i] = pal.code[k];
       const er = clamp(v - pal.dens[k], -dmax / 2, dmax / 2);
       e0[i + 1 + dir] += er * 0.4375; e1[i + 1 - dir] += er * 0.1875; e1[i + 1] += er * 0.3125; e1[i + 1 + dir] += er * 0.0625;
@@ -228,8 +300,9 @@ function dither(F, P) {
 }
 function geom(m) {
   const dpr = window.devicePixelRatio || 1;
-  M = m; C = clamp(Math.floor(stage.clientWidth * dpr / (2 * m)), 60, MAXC); R = Math.round(C * 5 / 6);
-  sx = 2 * m / (cw * dpr); sy = 3 * m / (ch * dpr); W = C * 2 * m / dpr; H = R * 3 * m / dpr;
+  M = m; PW = SIZES[m][0]; PH = SIZES[m][1];
+  C = clamp(Math.floor(stage.clientWidth * dpr / PW), 60, MAXC); R = Math.round(C * PW * 1.25 / PH);
+  sx = PW / (cw * dpr); sy = PH / (ch * dpr); W = C * PW / dpr; H = R * PH / dpr;
   zm = Math.max(2, Math.round(9 / (cw * sx))); zoom.max = zm; z = Math.min(z, zm);
   vp.style.aspectRatio = "auto"; vp.style.width = W + "px"; vp.style.height = H + "px";
 }
@@ -239,7 +312,7 @@ function relayout() {
   const k2 = [stage.clientWidth, dpr, w.toFixed(3), h.toFixed(3)].join();
   if (k2 === key) return;
   key = k2; cw = w; ch = h; pals = null;
-  geom(1);
+  geom(PREF);
   if (cur >= 0) show(cur, false);
 }
 const fmt = v => String(Math.round(v * 10) / 10);
@@ -248,7 +321,8 @@ function draw() {
   const dpr = window.devicePixelRatio || 1, cxn = clamp(fx, 0.5 / z, 1 - 0.5 / z), cyn = clamp(fy, 0.5 / z, 1 - 0.5 / z);
   const tx = Math.round((W / 2 - cxn * W * z) * dpr) / dpr, ty = Math.round((H / 2 - cyn * H * z) * dpr) / dpr;
   art.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + (sx * z).toFixed(6) + "," + (sy * z).toFixed(6) + ")";
-  info.textContent = (C * R).toLocaleString() + " letters · each " + fmt(2 * M * z) + " × " + fmt(3 * M * z) + " screen pixels";
+  info.textContent = (C * R).toLocaleString() + " letters · each " + fmt(PW * z) + " × " + fmt(PH * z) + " screen pixels";
+  vp.dataset.z = String(z);
   vp.style.touchAction = z > 1.01 ? "none" : "pan-y"; vp.style.cursor = z > 1.01 ? "grab" : "zoom-in";
 }
 function stop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
@@ -288,15 +362,23 @@ async function field(p) {
   return out;
 }
 function sample(src, binary) {
-  const cv = document.createElement("canvas"); cv.width = C; cv.height = R;
+  const k = binary ? 1 : 2, l = binary ? 1 : 3, cv = document.createElement("canvas"); cv.width = k * C; cv.height = l * R;
   const cx = cv.getContext("2d", { willReadFrequently: true });
   cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
-  cx.drawImage(src, 0, 0, C, R);
-  const d = cx.getImageData(0, 0, C, R).data, n = C * R;
-  if (binary) { const P = new Uint8Array(n); for (let i = 0; i < n; i++) P[i] = d[i * 4] > 127 ? 1 : 0; return P; }
-  const F = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const v = d[i * 4]; F[i] = v <= 1 ? -1 : v / 255; }
-  return F;
+  cx.drawImage(src, 0, 0, k * C, l * R);
+  const n = C * R;
+  if (binary) { const d = cx.getImageData(0, 0, C, R).data, P = new Uint8Array(n); for (let i = 0; i < n; i++) P[i] = d[i * 4] > 127 ? 1 : 0; return P; }
+  // Six samples for every letter: two across and three down. Their mean is the cell's tone; their pattern is its shape.
+  const F = new Float32Array(n), G = new Uint8Array(6 * n), w2 = 2 * C, band = 120;
+  for (let j0 = 0; j0 < R; j0 += band) {                               // read back in bands, so the buffer held at one time stays small
+    const rows = Math.min(band, R - j0), d = cx.getImageData(0, 3 * j0, w2, 3 * rows).data, off = 3 * j0 * w2;
+    for (let i = 0, m = 3 * rows * w2; i < m; i++) G[off + i] = d[i * 4];
+  }
+  for (let j = 0; j < R; j++) for (let i = 0; i < C; i++) {
+    const b = 3 * j * w2 + 2 * i, v = (G[b] + G[b + 1] + G[b + w2] + G[b + w2 + 1] + G[b + 2 * w2] + G[b + 2 * w2 + 1]) / 6;
+    F[j * C + i] = v <= 1 ? -1 : v / 255;
+  }
+  return { F, G };
 }
 const when = (ts, opt) => new Intl.DateTimeFormat(undefined, opt).format(new Date(ts));
 function caption(p) {
@@ -323,18 +405,27 @@ async function show(i, reveal) {
     await new Promise(r => setTimeout(r, 30));
     if (my !== token) return;
     if (!pals) tune();
-    let F, P = null;
-    if (f.bmp) { F = sample(f.bmp); if (f.mask) P = sample(f.mask, true); }
+    let F, P = null, G = null;
+    const t0 = performance.now(), seen = !document.hidden;
+    if (f.bmp) { const s = sample(f.bmp); F = s.F; G = s.G; if (f.mask) P = sample(f.mask, true); }
     else {
       const k = C + "x" + R;
       if (f.key !== k) { f.res = await runScene(f.code, C, R); f.key = k; if (my !== token) return; }
       F = Float32Array.from(f.res.F); P = f.res.P;
       for (let i = 0; i < F.length; i++) if (!(F[i] > 0.004)) F[i] = -1;
     }
-    art.textContent = dither(F, P);
+    art.textContent = dither(F, P, G);
     ready = true;
     const fo = p.focus || [0.5, 0.4]; fx = fo[0]; fy = fo[1];
     if (reveal) pullBack(); else { z = 1; zoom.value = 1; draw(); }
+    if (M < 2 && M === PREF && !fixed && seen) {
+      // The smallest letters are up to six times the work. If this device needs too long to type and paint them, go back a size.
+      const painted = await new Promise(r => { requestAnimationFrame(() => requestAnimationFrame(() => r(true))); setTimeout(() => r(false), 6000); });
+      if (my === token && (!painted || performance.now() - t0 > LIMIT) && !document.hidden) {
+        PREF = M + 1; try { localStorage.setItem("nil-size", JSON.stringify({ s: PREF, t: Date.now() })); } catch (e) {}
+        key = ""; relayout();
+      }
+    }
   } catch (e) {
     if (my === token) info.textContent = "This picture didn't load. Check your connection, then pick it again.";
   }
