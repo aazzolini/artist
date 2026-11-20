@@ -256,6 +256,31 @@ function tune() {
   dmax = top(list);
   const eq = list.find(a => a[0] === 61)[1];
   pals = [palette(list, sh), palette(list.filter(a => a[0] === 32 || a[0] === 45 || a[0] === 126 || a[0] === 61 || a[1] > eq * 1.03), sh)];
+  try { weave(pals[0]); } catch (e) {}
+}
+// Patterns (asked for on Nov 19: "use some sort of specific patterns and repetition on text"). In about half of the flat areas the
+// letters are not drawn by lot but repeat: pairs and triples of letters that weigh nearly the same (/\ <> () [] -= .: MW ...), laid
+// in rows that step sideways from line to line, so they make zigzags, diamonds, bricks and columns. Which areas, which letters and
+// which step change from picture to picture (patSeed). An edge still takes the letter that follows it, and a pattern letter too far
+// from the tone wanted gives way to one drawn by lot, so the picture seen from afar stays the same.
+const FAMS = ["/\\", "<>", "()", "[]", "{}", "-=", "~-", "=~", ".:", ",'", ";:", ".,", "'`", "+*", "!|", "il", "lI", "1l", "tf", "jl", "db", "qp", "MW", "AV", "OQ", "0O", "8B", "HN", "EF", "ZS", "XK", "TY", "CG", "UJ", "DO", "RK", "PF", "69", "25", "38", "#%", "@&", "$S", "%&", "/|\\", "<=>", "(|)", "-=~", ".:;", "+*#", "^\"", "?!", "7/", "L\\", "TI", "Yl", "hk", "gq", "4+", "kK", "bp", "dq", "JL", "NZ", "VY", "GQ", "BR", "E3", "S5", "B8", "D0", "#@", "&8", "$8", "_.", "-~", "=+", "*^", "<(", ")>", "{[", "]}", "|l", "I1", "i!", ";!", "ft", "Ll", "T7", "Y4", "FP", "KR", "HM", "NW", "UO", "QD", "G6", "96", "@#", "%#", "&$"];
+const BLK = 44;                                                           // patches of pattern are a few dozen letters across
+let patSeed = 0;
+function weave(pal) {
+  const fams = [];
+  for (const s of FAMS) {
+    const ks = Array.from(s).map(c => pal.code.indexOf(c.charCodeAt(0)));
+    if (ks.some(k => k < 0)) continue;
+    const ws = ks.map(k => pal.dens[k]), mean = ws.reduce((a, b) => a + b, 0) / ws.length;
+    if (Math.max.apply(null, ws) - Math.min.apply(null, ws) > 0.05 * dmax || mean < 0.03 * dmax) continue;     // one pattern, one weight
+    fams.push({ ks, mean });
+  }
+  const by = new Int16Array(256 * 3).fill(-1), tol = 0.02 * dmax;
+  for (let q = 0; q < 256; q++) {
+    const v = q / 255 * dmax, near = fams.map((f, n) => [Math.abs(f.mean - v), n]).filter(a => a[0] <= tol).sort((a, b) => a[0] - b[0]).slice(0, 3);
+    near.forEach((a, n) => { by[q * 3 + n] = a[1]; });
+  }
+  pal.fams = fams; pal.famBy = by;
 }
 // Picks a letter for every cell. Tone decides which letters are candidates (the error is passed on to the neighbours, as before).
 // Where an edge or a thin line of the picture crosses the cell, the letter is chosen to follow it: the one whose strokes run along it,
@@ -269,9 +294,13 @@ function dither(F, P, G, st) {
   const Z = new Float32Array(C * R);                                    // the tones with the empty cells as black, for reading neighbours
   for (let q = 0; q < Z.length; q++) Z[q] = F[q] < 0 ? 0 : F[q];
   const at = (i, j) => Z[(j < 0 ? 0 : j >= R ? R - 1 : j) * C + (i < 0 ? 0 : i >= C ? C - 1 : i)];
-  if (st) { st.all = 0; st.n = 0; st.a = 0; st.b = 0; st.h = new Array(21).fill(0); st.c = [{}, {}, {}, {}, {}]; st.d = [{}, {}, {}, {}, {}]; }
+  if (st) { st.all = 0; st.n = 0; st.a = 0; st.b = 0; st.h = new Array(21).fill(0); st.c = [{}, {}, {}, {}, {}]; st.d = [{}, {}, {}, {}, {}]; st.pt = 0; st.pp = 0; st.pf = {}; }
+  const nbx = Math.ceil(C / BLK) + 2, nby = Math.ceil(R / BLK) + 2, la = new Float32Array(nbx * nby), lb = new Float32Array(nbx * nby), wide = 0.14 * dmax;
+  for (let y = 0; y < nby; y++) for (let x = 0; x < nbx; x++) { la[y * nbx + x] = hs(x + 11 + patSeed, y + 5 + 3 * patSeed); lb[y * nbx + x] = hs(x + 301 + 7 * patSeed, y + 97 + patSeed); }
+  const ya = new Float32Array(nbx), yb = new Float32Array(nbx), inv = 1 / BLK;     // the two slow fields along the current row of letters
   for (let j = 0; j < R; j++) {
     const dir = j & 1 ? -1 : 1;
+    { const y = j * inv, y0 = y | 0, w = y - y0, b = w * w * (3 - 2 * w), o = y0 * nbx; for (let x = 0; x < nbx; x++) { ya[x] = la[o + x] + (la[o + nbx + x] - la[o + x]) * b; yb[x] = lb[o + x] + (lb[o + nbx + x] - lb[o + x]) * b; } }
     for (let n = 0; n < C; n++) {
       const i = dir > 0 ? n : C - 1 - n, q = j * C + i, f = F[q];
       if (f < 0) { row[i] = 32; continue; }
@@ -312,6 +341,15 @@ function dither(F, P, G, st) {
             st.n++; st.a += pal.ox[k] * ex + pal.oy[k] * ey; st.b += pal.ox[ko] * ex + pal.oy[ko] * ey;
             st.c[cl][pal.code[k]] = (st.c[cl][pal.code[k]] || 0) + 1; st.d[cl][pal.code[ko]] = (st.d[cl][pal.code[ko]] || 0) + 1;
           }
+        }
+      }
+      if (k < 0 && pal.fams) {                                               // a flat cell: is it inside a patch of pattern?
+        const xf = i * inv, x0 = xf | 0, u = xf - x0, sa = u * u * (3 - 2 * u), lq = ((f * 255 + 0.5) | 0) * 3, by = pal.famBy;
+        if (by[lq] >= 0 && ya[x0] + (ya[x0 + 1] - ya[x0]) * sa > 0.5) {
+          const cnt = by[lq + 1] < 0 ? 1 : by[lq + 2] < 0 ? 2 : 3, r2 = yb[x0] + (yb[x0 + 1] - yb[x0]) * sa, fam = pal.fams[by[lq + Math.min(cnt - 1, Math.floor(r2 * 2.999 * cnt) % cnt)]], L = fam.ks.length;
+          const kk = fam.ks[(i + (Math.floor(r2 * 8) % L) * j) % L];
+          if (st) st.pt++;
+          if (Math.abs(pal.dens[kk] - v) <= wide) { k = kk; if (st) { st.pp++; const nm = fam.ks.map(c => String.fromCharCode(pal.code[c])).join(""); st.pf[nm] = (st.pf[nm] || 0) + 1; } }
         }
       }
       if (k < 0) k = pal.lo[lv] + Math.floor(hs(i + 57, j + 131) * (pal.hi[lv] - pal.lo[lv] + 1));
@@ -487,6 +525,7 @@ async function show(i, reveal) {
       F = Float32Array.from(f.res.F); P = f.res.P;
       for (let i = 0; i < F.length; i++) if (!(F[i] > 0.004)) F[i] = -1;
     }
+    patSeed = 0; for (let n = 0; n < p.id.length; n++) patSeed = (patSeed * 31 + p.id.charCodeAt(n)) % 9973;
     const typed = dither(F, P, G);
     rowsArr = typed.rows; win = null; art.textContent = "";
     farOK = M <= 2;
