@@ -105,9 +105,9 @@ const FS = 12, DROP = "acemnorsuvwxz", MAXC = 1400;
 // SIZES: screen pixels per letter, smallest first. Whole pixels only: a pitch of one and a half pixels prints stripes.
 // PREF is the size asked for: one letter to a screen pixel if the device can keep up. A device that needs too long to type a picture
 // drops back a size and remembers that for three days; ?size=0..4 in the address forces a size (2 is the old 2 × 3).
-const SIZES = [[1, 1], [1, 2], [2, 3], [4, 6], [6, 9]], LIMIT = 1700;
+const SIZES = [[1, 1], [1, 2], [2, 3], [4, 6], [6, 9]], LIMIT = 4500;
 let PREF = 0, fixed = false, PW = 2, PH = 3;
-try { const sv = JSON.parse(localStorage.getItem("nil-size") || "null"); if (sv && sv.s >= 1 && sv.s <= 2 && Date.now() - sv.t < 2592e5) PREF = sv.s; } catch (e) {}
+try { const sv = JSON.parse(localStorage.getItem("nil-size2") || "null"); if (sv && sv.s >= 1 && sv.s <= 2 && Date.now() - sv.t < 2592e5) PREF = sv.s; } catch (e) {}
 { const mq = /[?&]size=([0-4])\b/.exec(location.search); if (mq) { PREF = +mq[1]; fixed = true; } }
 const $ = id => document.getElementById(id);
 const stage = $("stage"), vp = $("vp"), art = $("art"), far = $("far"), probe = $("probe"), zoom = $("zoom"), info = $("info"), days = $("days");
@@ -512,14 +512,24 @@ async function field(p) {
   return out;
 }
 function sample(src, binary) {
-  const k = binary ? 1 : 2, l = binary ? 1 : 3, cv = document.createElement("canvas"); cv.width = k * C; cv.height = l * R;
+  // Letters with an inside (more than two screen pixels each) get six samples, two across and three down: their mean is the cell's
+  // tone, their pattern its shape. Letters the size of a pixel get one sample; that is a sixth of the work, on a phone the difference
+  // between keeping the smallest letters and falling back to bigger ones.
+  const fine = !binary && PW * PH > 2, k = fine ? 2 : 1, l = fine ? 3 : 1, cv = document.createElement("canvas"); cv.width = k * C; cv.height = l * R;
   const cx = cv.getContext("2d", { willReadFrequently: true });
   cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = "high";
   cx.drawImage(src, 0, 0, k * C, l * R);
   const n = C * R;
   if (binary) { const d = cx.getImageData(0, 0, C, R).data, P = new Uint8Array(n); for (let i = 0; i < n; i++) P[i] = d[i * 4] > 127 ? 1 : 0; return P; }
-  // Six samples for every letter: two across and three down. Their mean is the cell's tone; their pattern is its shape.
-  const F = new Float32Array(n), G = new Uint8Array(6 * n), w2 = 2 * C, band = 120;
+  const F = new Float32Array(n), band = 120;
+  if (!fine) {
+    for (let j0 = 0; j0 < R; j0 += band) {
+      const rows = Math.min(band, R - j0), d = cx.getImageData(0, j0, C, rows).data, off = j0 * C;
+      for (let i = 0, m = rows * C; i < m; i++) { const v = d[i * 4]; F[off + i] = v <= 1 ? -1 : v / 255; }
+    }
+    return { F, G: null };
+  }
+  const G = new Uint8Array(6 * n), w2 = 2 * C;
   for (let j0 = 0; j0 < R; j0 += band) {                               // read back in bands, so the buffer held at one time stays small
     const rows = Math.min(band, R - j0), d = cx.getImageData(0, 3 * j0, w2, 3 * rows).data, off = 3 * j0 * w2;
     for (let i = 0, m = 3 * rows * w2; i < m; i++) G[off + i] = d[i * 4];
@@ -576,7 +586,7 @@ async function show(i, reveal) {
       // The smallest letters are up to six times the work. If this device needs too long to type and paint them, go back a size.
       const painted = await new Promise(r => { requestAnimationFrame(() => requestAnimationFrame(() => r(true))); setTimeout(() => r(false), 6000); });
       if (my === token && (!painted || performance.now() - t0 > LIMIT) && !document.hidden) {
-        PREF = M + 1; try { localStorage.setItem("nil-size", JSON.stringify({ s: PREF, t: Date.now() })); } catch (e) {}
+        PREF = M + 1; try { localStorage.setItem("nil-size2", JSON.stringify({ s: PREF, t: Date.now() })); } catch (e) {}
         key = ""; relayout();
       }
     }
