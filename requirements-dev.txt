@@ -8,3 +8,4 @@ Pillow>=10
 fast-simplification>=0.1.7
 trimesh>=4
 networkx>=3
+manifold3d>=3.0

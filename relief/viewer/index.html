@@ -71,6 +71,7 @@ footer p { margin: 0 0 6px; }
         <button type="button" id="v-angle" aria-pressed="false">Angled</button>
         <button type="button" id="v-letters" aria-pressed="false">Letters up close</button>
         <button type="button" id="v-frame" aria-pressed="false">Frame up close</button>
+        <button type="button" id="v-back" aria-pressed="false">Back</button>
       </div>
     </div>
     <div class="group">
@@ -93,11 +94,12 @@ footer p { margin: 0 0 6px; }
     <div><dt>Size</dt><dd>229 × 275 mm · 14.6 mm deep</dd></div>
     <div><dt>Letters</dt><dd>153 × 125 · each 1.5 × 2.2 mm</dd></div>
     <div><dt>Relief</dt><dd>3 mm base · objects to 9 mm · frame crest 11 mm · letters +0.6 mm</dd></div>
-    <div><dt>Print</dt><dd>Full-color PolyJet</dd></div>
+    <div><dt>Print</dt><dd>Full-color PolyJet · 268 cm³</dd></div>
+    <div><dt>Hanging</dt><dd>Two keyhole slots, 217 mm apart · two #6–#8 screws</dd></div>
   </dl>
 
   <footer>
-    <p>This is a preview of the print file. On screen, the letters' height is drawn from a surface map, so it looks right in the light but doesn't change the outline. The printed piece has real raised letters. Printed colors usually come out a little darker than on screen.</p>
+    <p>Ready to hang: the back is hollowed like a real frame, and two keyhole slots sit in the sides of the frame. Put two screws in the wall 217 mm apart and level, leaving the heads about 3 mm out. Set the piece over them and slide it down. This is a preview of the print file. On screen, the letters' height is drawn from a surface map, so it looks right in the light but doesn't change the outline. The printed piece has real raised letters. Printed colors usually come out a little darker than on screen.</p>
   </footer>
 </div>
 
@@ -157,9 +159,9 @@ wall.receiveShadow = true;
 scene.add(wall);
 
 function placeLight() {
-  const az = THREE.MathUtils.degToRad(+$("az").value), el = THREE.MathUtils.degToRad(+$("el").value), d = 0.6;
+  const az = THREE.MathUtils.degToRad(+$("az").value), el = THREE.MathUtils.degToRad(+$("el").value), d = 0.6 * (behind ? -1 : 1);
   // az 0 = light from the right, 90 = from the top; el = angle above the plaque's surface
-  key.position.set(center.x + d * Math.cos(el) * Math.cos(az), center.y + d * Math.cos(el) * Math.sin(az), center.z + d * Math.sin(el));
+  key.position.set(center.x + Math.abs(d) * Math.cos(el) * Math.cos(az), center.y + Math.abs(d) * Math.cos(el) * Math.sin(az), center.z + d * Math.sin(el));
   key.target.position.copy(center);
   $("az-o").textContent = $("az").value + "°";
   $("el-o").textContent = $("el").value + "°";
@@ -172,6 +174,10 @@ const views = {
     const t = new THREE.Vector3(0.456 * size.x, (1 - 0.405) * size.y, 0.011);
     return { pos: t.clone().add(new THREE.Vector3(0.012, -0.018, 0.045)), tgt: t };
   },
+  back: () => {  // the right-hand keyhole as seen from behind (6 mm in from the edge, 45 mm below the top)
+    const t = new THREE.Vector3(size.x - 0.006, size.y - 0.045 + 0.004, 0.0);
+    return { pos: t.clone().add(new THREE.Vector3(0.03, -0.02, -0.11)), tgt: t };
+  },
   frame: () => {
     const t = new THREE.Vector3(0.035 * size.x, (1 - 0.03) * size.y, 0.012);
     return { pos: t.clone().add(new THREE.Vector3(0.05, -0.045, 0.05)), tgt: t };
@@ -179,7 +185,8 @@ const views = {
 };
 let fly = null;
 function go(name) {
-  for (const n of ["front", "angle", "letters", "frame"]) $("v-" + n).setAttribute("aria-pressed", String(n === name));
+  for (const n of ["front", "angle", "letters", "frame", "back"]) $("v-" + n).setAttribute("aria-pressed", String(n === name));
+  behind = name === "back"; wall.visible = !behind; placeLight();
   flyTo(views[name]());
 }
 function flyTo({ pos, tgt }) {
@@ -202,7 +209,7 @@ function resize() {
 new ResizeObserver(resize).observe(stage);
 resize();
 
-let sweeping = false;
+let sweeping = false, behind = false;
 function tick(now) {
   if (fly) {
     const u = Math.min(1, (now - fly.start) / fly.dur), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(2 - 2 * u, 2) / 2;
@@ -288,6 +295,7 @@ $("v-front").addEventListener("click", () => go("front"));
 $("v-angle").addEventListener("click", () => go("angle"));
 $("v-letters").addEventListener("click", () => go("letters"));
 $("v-frame").addEventListener("click", () => go("frame"));
+$("v-back").addEventListener("click", () => go("back"));
 $("az").addEventListener("input", placeLight);
 $("el").addEventListener("input", placeLight);
 $("rake").addEventListener("click", () => { $("el").value = "8"; placeLight(); });

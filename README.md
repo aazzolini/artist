@@ -115,6 +115,16 @@ python -m relief.build 2026-11-16-15 --width-mm 200 --cols 133 --frame-mm 15 --o
   for none. The frame nearly doubles the print volume (367 vs 196 cm³ for The Catch), which matters
   because full-color prints are usually priced by volume.
 
+- **Ready to hang** (framed pieces): the back is hollowed like a real frame. It keeps a 2.5 mm shell
+  behind every front surface and a solid 4 mm rim where the piece touches the wall, which cuts The Catch
+  from 367 to 268 cm³. Two keyhole slots are cut into the back of the frame's side bands, 45 mm below
+  the top and 217 mm apart. Each has a 9 mm entry, a 4.6 mm shank slot through a 2.4 mm lip, and a 4 mm
+  deep channel behind it for the screw head. That fits #6–#8 screws with heads up to about 8.5 mm.
+  Unframed pieces are too thin for keyholes, so they get none. Wall-facing surfaces print in plain
+  bronze. The keyholes are cut with manifold3d booleans, and the front and back surfaces are
+  simplified separately and stitched together, so the solid is always watertight.
+  `info.json` records the keyhole positions, screw spacing, volume and how the mesh was simplified.
+
 Sample previews: `relief/samples/the-catch-framed/`.
 
 **3D web preview:** each build also writes the web model. `<name>.model.json` holds the glTF and
