@@ -73,13 +73,14 @@ def previews(r: Relief, out: Path) -> dict:
 # ---------------------------------------------------------------- mesh
 
 
-def mesh(r: Relief, target_tris: int = 1_500_000):
+def mesh(r: Relief, target_tris: int = 1_500_000, height: np.ndarray | None = None):
     """Watertight heightfield solid (top surface, flat bottom, side walls), decimated."""
     import fast_simplification
-    H, W = r.height.shape
+    height = r.height if height is None else height
+    H, W = height.shape
     s = 1 / r.px_per_mm
     yy, xx = np.mgrid[0:H, 0:W]
-    top = np.column_stack([xx.ravel() * s, (H - 1 - yy.ravel()) * s, r.height.ravel()])
+    top = np.column_stack([xx.ravel() * s, (H - 1 - yy.ravel()) * s, height.ravel()])
     bot = top.copy(); bot[:, 2] = 0
     verts = np.vstack([top, bot]).astype(np.float64)
     idx = np.arange(H * W).reshape(H, W)
@@ -150,6 +151,35 @@ def write_3mf(v, f, wmm, hmm, texture: Image.Image, path: Path):
         z.writestr("3D/Textures/paint.png", png.getvalue())
 
 
+def write_glb(r: Relief, path: Path, target_tris: int = 200_000, letter_mm: float = 0.6) -> dict:
+    """Web viewing model (glTF binary, meters): the object depths as geometry, the raised
+    letters as a full-resolution normal map, plus color and a gloss map (letters satin, ground matte)."""
+    import trimesh
+    from scipy import ndimage as ndi
+    v, f, wmm, hmm = mesh(r, target_tris, height=r.body)
+    # Letter relief -> tangent-space normal map (tangent = +x, bitangent = +y = image up).
+    detail = letter_mm * ndi.gaussian_filter(r.ink, 0.04 * r.px_per_mm)
+    d_row, d_col = np.gradient(detail, 1 / r.px_per_mm)
+    n = np.dstack([-d_col, d_row, np.ones_like(detail)])
+    n /= np.linalg.norm(n, axis=2, keepdims=True)
+    normal = _img(n * 0.5 + 0.5)
+    rough = 0.78 - 0.4 * r.ink  # glTF: G = roughness, B = metalness (0)
+    mr = _img(np.dstack([np.ones_like(rough), rough, np.zeros_like(rough)]))
+    uv = np.column_stack([v[:, 0] / wmm, v[:, 1] / hmm])  # trimesh flips v for glTF
+    mat = trimesh.visual.material.PBRMaterial(
+        name="print", baseColorTexture=_img(r.color), normalTexture=normal,
+        metallicRoughnessTexture=mr, metallicFactor=0.0, roughnessFactor=1.0)
+    m = trimesh.Trimesh(vertices=v * 0.001, faces=f, process=False,
+                        visual=trimesh.visual.TextureVisuals(uv=uv, material=mat))
+    # glTF is Y-up; our plaque faces +z with +y up already.
+    path.write_bytes(trimesh.exchange.gltf.export_glb(m))
+    # Same model as one self-contained .gltf JSON file, for hosts that only serve web file types.
+    json_path = path.with_suffix(".gltf.json")
+    json_path.write_bytes(trimesh.exchange.gltf.export_gltf(m, embed_buffers=True)["model.gltf"])
+    return {"glb_triangles": int(len(f)), "glb_mb": round(path.stat().st_size / 1e6, 1),
+            "gltf_json_mb": round(json_path.stat().st_size / 1e6, 1)}
+
+
 def save_all(r: Relief, out: Path, target_tris: int = 1_500_000) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     name = out.name
@@ -160,6 +190,7 @@ def save_all(r: Relief, out: Path, target_tris: int = 1_500_000) -> dict:
     v, f, wmm, hmm = mesh(r, target_tris)
     write_3mf(v, f, wmm, hmm, texture, out / f"{name}.3mf")
     write_obj_zip(v, f, wmm, hmm, texture, out / f"{name}-obj.zip", name)
+    info.update(write_glb(r, out / f"{name}.glb"))
     info.update(size_mm=[round(wmm, 1), round(hmm, 1), round(float(r.height.max()), 1)],
                 triangles=int(len(f)), letters=list(r.letters.shape[::-1]))
     (out / "info.json").write_text(json.dumps(info, indent=1))

@@ -110,3 +110,9 @@ python -m relief.build 2026-11-16-15 --width-mm 200 --cols 133 --out out/
   **full-color PolyJet** print (Craftcloud, Xometry, Stratasys Direct, Unionfab).
 
 Sample previews: `relief/samples/the-catch-200mm/`.
+
+**3D web preview:** each build also writes `<name>.glb` and `<name>.gltf.json`. That's a light web
+model: about 200k triangles for the shape, with the raised letters as a full-resolution normal map plus
+color and gloss maps. `relief/viewer/index.html` is a three.js viewer for it. You can orbit, zoom into the
+letters, move or sweep the light, and switch between matte, satin and gloss finishes. Put the
+`.gltf.json` next to it as `the-catch.gltf.json`, or change the filename in the page.

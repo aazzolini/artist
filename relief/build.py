@@ -79,11 +79,13 @@ def resize(a: np.ndarray, w: int, h: int) -> np.ndarray:
 
 @dataclass
 class Relief:
-    height: np.ndarray  # mm, (H, W)
+    height: np.ndarray  # mm, (H, W): body + raised letters
+    body: np.ndarray  # mm, (H, W): base plate + object depths, without letters
     color: np.ndarray  # 0..1 RGB, (H, W, 3)
     px_per_mm: float
     letters: np.ndarray
     text: str
+    ink: np.ndarray  # 0..1 letter coverage, (H, W)
 
 
 def build(piece: str, width_mm: float = 200, cols: int = 133, px_per_mm: float = 10,
@@ -119,15 +121,22 @@ def build(piece: str, width_mm: float = 200, cols: int = 133, px_per_mm: float =
 
     depth = ndi.gaussian_filter(depth, 0.15 * px_per_mm)  # soften stair-steps between objects
     ink_s = ndi.gaussian_filter(ink, 0.04 * px_per_mm)   # tiny bevel so letters print cleanly
-    height = base_mm + depth + letter_mm * ink_s
+    body = base_mm + depth
+    height = body + letter_mm * ink_s
 
     # Letters carry the picture: bright where it's bright, toward white in highlights.
     lum = ctx["f"]
     ink_col = tint * (0.6 + 0.6 * lum[..., None]) + 0.5 * (lum ** 2)[..., None]
     ground = tint * 0.22 + 0.03
     color = np.clip(ground * (1 - ink[..., None]) + ink_col * ink[..., None], 0, 1)
+    # Side walls between depth layers: a planar color projection would smear letters down them,
+    # so paint the steep band in the plain ground color instead.
+    gy, gx = np.gradient(body, 1 / px_per_mm)
+    steep = ndi.binary_dilation(np.hypot(gx, gy) > 1.0, iterations=max(1, int(0.15 * px_per_mm)))
+    color[steep] = np.clip(ground[steep], 0, 1)
     text = "\n".join("".join(chr(at.codes[k]) for k in row) for row in letters)
-    return Relief(height.astype(np.float32), color.astype(np.float32), px_per_mm, letters, text)
+    return Relief(height.astype(np.float32), body.astype(np.float32), color.astype(np.float32),
+                  px_per_mm, letters, text, ink.astype(np.float32))
 
 
 def main():

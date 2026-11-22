@@ -4,6 +4,8 @@
   "closeup": "preview_closeup.png",
   "3d": "preview_3d.png"
  },
+ "glb_triangles": 199998,
+ "glb_mb": 7.2,
  "size_mm": [
   199.4,
   244.1,
