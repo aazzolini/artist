@@ -111,8 +111,11 @@ python -m relief.build 2026-11-16-15 --width-mm 200 --cols 133 --out out/
 
 Sample previews: `relief/samples/the-catch-200mm/`.
 
-**3D web preview:** each build also writes `<name>.glb` and `<name>.gltf.json`. That's a light web
-model: about 200k triangles for the shape, with the raised letters as a full-resolution normal map plus
-color and gloss maps. `relief/viewer/index.html` is a three.js viewer for it. You can orbit, zoom into the
-letters, move or sweep the light, and switch between matte, satin and gloss finishes. Put the
-`.gltf.json` next to it as `the-catch.gltf.json`, or change the filename in the page.
+**3D web preview:** each build also writes the web model. `<name>.model.json` holds the glTF and
+base64 geometry, and `<name>-0..2.png` are the color, letter-detail and gloss maps. The shape is about
+200k triangles, and the raised letters come from a full-resolution normal map. `relief/viewer/index.html`
+is a three.js viewer for it: orbit, zoom into the letters, move or sweep the light, and switch between
+matte, satin and gloss finishes. Put the web model files next to it, named `the-catch.*`, or change the
+filename in the page. The page rebuilds the model in memory, so it never fetches `data:` or `blob:` URLs.
+That matters because strict hosts, such as claude.ai artifacts, block those fetches. (`<name>.glb` is
+also written for desktop 3D viewers.)

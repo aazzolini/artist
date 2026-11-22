@@ -161,6 +161,10 @@ def write_glb(r: Relief, path: Path, target_tris: int = 200_000, letter_mm: floa
     detail = letter_mm * ndi.gaussian_filter(r.ink, 0.04 * r.px_per_mm)
     d_row, d_col = np.gradient(detail, 1 / r.px_per_mm)
     n = np.dstack([-d_col, d_row, np.ones_like(detail)])
+    # Steep side walls get planar-projected UVs; keep them smooth instead of smeared letters.
+    by, bx = np.gradient(r.body, 1 / r.px_per_mm)
+    steep = ndi.binary_dilation(np.hypot(bx, by) > 1.0, iterations=max(1, int(0.15 * r.px_per_mm)))
+    n[steep] = (0.0, 0.0, 1.0)
     n /= np.linalg.norm(n, axis=2, keepdims=True)
     normal = _img(n * 0.5 + 0.5)
     rough = 0.78 - 0.4 * r.ink  # glTF: G = roughness, B = metalness (0)
@@ -176,8 +180,9 @@ def write_glb(r: Relief, path: Path, target_tris: int = 200_000, letter_mm: floa
     # Same model as one self-contained .gltf JSON file, for hosts that only serve web file types.
     json_path = path.with_suffix(".gltf.json")
     json_path.write_bytes(trimesh.exchange.gltf.export_gltf(m, embed_buffers=True)["model.gltf"])
+    web = write_web_model(path, path.parent, path.stem)
     return {"glb_triangles": int(len(f)), "glb_mb": round(path.stat().st_size / 1e6, 1),
-            "gltf_json_mb": round(json_path.stat().st_size / 1e6, 1)}
+            "gltf_json_mb": round(json_path.stat().st_size / 1e6, 1), "web_files": web}
 
 
 def save_all(r: Relief, out: Path, target_tris: int = 1_500_000) -> dict:
@@ -195,3 +200,45 @@ def save_all(r: Relief, out: Path, target_tris: int = 1_500_000) -> dict:
                 triangles=int(len(f)), letters=list(r.letters.shape[::-1]))
     (out / "info.json").write_text(json.dumps(info, indent=1))
     return info
+
+
+def write_web_model(glb: Path, out_dir: Path, name: str) -> dict:
+    """Split a GLB into files any static host serves under a strict content policy:
+    <name>.model.json  = {"gltf": glTF JSON, "bin": base64 geometry} (the page rebuilds a GLB in memory)
+    <name>-<i>.png      = textures, referenced by relative URL.
+    No data: or blob: URLs are fetched, which strict CSPs (like claude.ai artifacts) block."""
+    import base64
+    import struct
+    raw = glb.read_bytes()
+    jlen = struct.unpack_from("<I", raw, 12)[0]
+    gj = json.loads(raw[20:20 + jlen])
+    blen = struct.unpack_from("<I", raw, 20 + jlen)[0]
+    bin_ = raw[28 + jlen:28 + jlen + blen]
+    views = gj["bufferViews"]
+    image_views = {img["bufferView"] for img in gj.get("images", [])}
+    files = {}
+    for i, img in enumerate(gj.get("images", [])):
+        bv = views[img["bufferView"]]
+        fname = f"{name}-{i}.png"
+        (out_dir / fname).write_bytes(bin_[bv.get("byteOffset", 0):bv.get("byteOffset", 0) + bv["byteLength"]])
+        gj["images"][i] = {"uri": fname, "mimeType": img.get("mimeType", "image/png")}
+        files[fname] = (out_dir / fname).stat().st_size
+    new_bin, remap, new_views = bytearray(), {}, []
+    for i, bv in enumerate(views):
+        if i in image_views:
+            continue
+        while len(new_bin) % 4:
+            new_bin.append(0)
+        chunk = bin_[bv.get("byteOffset", 0):bv.get("byteOffset", 0) + bv["byteLength"]]
+        remap[i] = len(new_views)
+        new_views.append({**bv, "buffer": 0, "byteOffset": len(new_bin)})
+        new_bin += chunk
+    for acc in gj.get("accessors", []):
+        if "bufferView" in acc:
+            acc["bufferView"] = remap[acc["bufferView"]]
+    gj["bufferViews"] = new_views
+    gj["buffers"] = [{"byteLength": len(new_bin)}]
+    model = out_dir / f"{name}.model.json"
+    model.write_text(json.dumps({"gltf": gj, "bin": base64.b64encode(bytes(new_bin)).decode()}))
+    files[model.name] = model.stat().st_size
+    return files

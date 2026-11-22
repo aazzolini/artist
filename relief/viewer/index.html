@@ -59,7 +59,7 @@ footer p { margin: 0 0 6px; }
 
   <div class="stage" id="stage">
     <canvas id="gl" aria-label="3D model of the relief plaque. Drag to turn it, scroll or pinch to zoom."></canvas>
-    <div class="status" id="status">Loading the 10 MB model…</div>
+    <div class="status" id="status">Loading the model…</div>
     <p class="hint" id="hint" hidden>Drag to turn · scroll or pinch to zoom · double-click a spot to look closely</p>
   </div>
 
@@ -214,7 +214,7 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
-new GLTFLoader().load("the-catch.gltf.json", gltf => {
+function onModel(gltf) {
   const root = gltf.scene;
   root.traverse(o => {
     if (o.isMesh) {
@@ -232,10 +232,39 @@ new GLTFLoader().load("the-catch.gltf.json", gltf => {
   setFinish("satin");
   camera.position.copy(views.front().pos); controls.target.copy(center); controls.update();
   status.hidden = true; $("hint").hidden = false;
-}, ev => {
-  if (ev.total) status.textContent = "Loading the model… " + Math.round(100 * ev.loaded / ev.total) + "%";
-}, () => {
-  status.textContent = "The model didn't load. Check your connection and reload the page.";
+}
+
+// The model ships as JSON (glTF + base64 geometry) plus PNG textures beside the page.
+// We rebuild a binary glTF in memory, so nothing is fetched from data: or blob: URLs.
+async function loadModel(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const total = +res.headers.get("content-length") || 0, reader = res.body.getReader(), parts = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value); got += value.length;
+    status.textContent = "Loading the model… " + (total ? Math.round(100 * got / total) + "%" : (got / 1e6).toFixed(1) + " MB");
+  }
+  const { gltf, bin } = JSON.parse(await new Blob(parts).text());
+  const raw = atob(bin), body = new Uint8Array((raw.length + 3) & ~3);
+  for (let i = 0; i < raw.length; i++) body[i] = raw.charCodeAt(i);
+  let json = new TextEncoder().encode(JSON.stringify(gltf));
+  const jpad = (json.length + 3) & ~3, head = new Uint8Array(jpad).fill(0x20);
+  head.set(json); json = head;
+  const glb = new ArrayBuffer(12 + 8 + json.length + 8 + body.length), v = new DataView(glb);
+  v.setUint32(0, 0x46546C67, true); v.setUint32(4, 2, true); v.setUint32(8, glb.byteLength, true);
+  v.setUint32(12, json.length, true); v.setUint32(16, 0x4E4F534A, true); new Uint8Array(glb, 20).set(json);
+  const o = 20 + json.length;
+  v.setUint32(o, body.length, true); v.setUint32(o + 4, 0x004E4942, true); new Uint8Array(glb, o + 8).set(body);
+  status.textContent = "Preparing textures…";
+  return new Promise((ok, fail) => new GLTFLoader().parse(glb, "./", ok, fail));
+}
+
+loadModel("the-catch.model.json").then(onModel).catch(err => {
+  console.error(err);
+  status.textContent = "The model didn't load (" + (err && err.message || err) + "). Reload the page to try again.";
 });
 
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
