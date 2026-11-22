@@ -1,3 +1,9 @@
+# Shop: sell 3D-printed figures of your characters (and digital downloads)
+
+A small, self-hosted store. You list your characters, buyers pay with Stripe, and each
+order goes to a print-on-demand service that prints the figure and ships it to the buyer.
+You never hold inventory. Payments go straight to your Stripe account; there's no marketplace cut.
+
 ## Set up (no config files)
 
 1. **Put it online:** on [render.com](https://render.com), choose New → Blueprint and pick this repo (about $7/month).
@@ -8,12 +14,6 @@
    you out. The store checks the key and registers its order notifications with Stripe by itself.
 4. **Price a piece and click Go live.** Paid orders show up under "Orders to print", with the address
    and a print-file download.
-
-# Shop: sell 3D-printed figures of your characters (and digital downloads)
-
-A small, self-hosted store. You list your characters, buyers pay with Stripe, and each
-order goes to a print-on-demand service that prints the figure and ships it to the buyer.
-You never hold inventory. Payments go straight to your Stripe account; there's no marketplace cut.
 
 **How an order works**
 
