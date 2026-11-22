@@ -1,3 +1,14 @@
+## Set up (no config files)
+
+1. **Put it online:** on [render.com](https://render.com), choose New → Blueprint and pick this repo (about $7/month).
+2. **Open `https://<your-store>.onrender.com/admin`** and create your admin password. Do this right away:
+   the first visitor to that page sets it.
+3. **Connect payments** on the same page: paste your Stripe secret key from
+   [dashboard.stripe.com/apikeys](https://dashboard.stripe.com/apikeys). Stripe holds your bank details and pays
+   you out. The store checks the key and registers its order notifications with Stripe by itself.
+4. **Price a piece and click Go live.** Paid orders show up under "Orders to print", with the address
+   and a print-file download.
+
 # Shop: sell 3D-printed figures of your characters (and digital downloads)
 
 A small, self-hosted store. You list your characters, buyers pay with Stripe, and each

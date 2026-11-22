@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 import stripe
-from fastapi import Body, FastAPI, Header, HTTPException, Request
+from fastapi import Body, Cookie, FastAPI, Form, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -20,6 +20,7 @@ from .config import Product, Settings, load_catalog, load_settings, seed_product
 from .db import Order, OrderStore
 from .fulfillment import Fulfiller, format_address, make_fulfiller
 from .mailer import send_email
+from .owner import Owner
 from .pieces import WEB_ASSET, BundleError, ingest, sign, update_product, verify
 
 log = logging.getLogger("shop")
@@ -44,6 +45,7 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
     seed_products(settings)
     catalog = load_catalog(settings)  # mutated in place when the pipeline publishes a piece
     store = OrderStore(settings.db_path)
+    owner = Owner(settings, store)
     fulfiller = fulfiller or make_fulfiller(settings)
     app = FastAPI(title=settings.store_name, docs_url=None, redoc_url=None)
 
@@ -62,10 +64,10 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
         catalog.update(fresh)
 
     def print_url(order: Order) -> str:
-        return f"{settings.base_url}/print-file/{order.session_id}?{sign(settings, 'print', order.session_id)}"
+        return f"{settings.base_url}/print-file/{order.session_id}?{sign(owner.signing_secret, 'print', order.session_id)}"
 
     def preview_url(pid: str) -> str:
-        return f"{settings.base_url}/p/{pid}?{sign(settings, 'preview', pid, ttl_s=None)}"
+        return f"{settings.base_url}/p/{pid}?{sign(owner.signing_secret, 'preview', pid, ttl_s=None)}"
 
     def link_for(order: Order, product: Product) -> str:
         path = "order" if product.physical else "download"
@@ -110,8 +112,12 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
                        f"{settings.max_downloads} downloads):\n{link}\n")
         return order
 
-    def require_admin(authorization: str) -> None:
-        if not settings.admin_token or authorization != f"Bearer {settings.admin_token}":
+    def is_admin(authorization: str = "", admin_session: str = "") -> bool:
+        token = authorization[7:] if authorization.startswith("Bearer ") else ""
+        return (bool(token) and owner.check_password(token)) or (bool(admin_session) and owner.valid_session(admin_session))
+
+    def require_admin(authorization: str, admin_session: str = "") -> None:
+        if not is_admin(authorization, admin_session):
             raise HTTPException(401, "Unauthorized")
 
     @app.get("/", response_class=HTMLResponse)
@@ -121,7 +127,7 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
     @app.get("/p/{product_id}", response_class=HTMLResponse)
     def product_page(request: Request, product_id: str, exp: str = "", sig: str = ""):
         product = catalog.get(product_id)
-        preview = bool(sig) and verify(settings, "preview", product_id, exp, sig)
+        preview = bool(sig) and verify(owner.signing_secret, "preview", product_id, exp, sig)
         if product is None or (product.draft and not preview):
             raise HTTPException(404, "No such product")
         return render(request, "product.html", product=product, draft_preview=product.draft)
@@ -141,6 +147,8 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
         product = catalog.get(product_id)
         if product is None or product.draft:
             raise HTTPException(404, "No such product")
+        if not owner.payments_connected:
+            raise HTTPException(503, "This store isn't taking payments yet. Please check back soon.")
         params: dict = dict(
             mode="payment",
             line_items=[{
@@ -163,13 +171,13 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
                 "fixed_amount": {"amount": settings.shipping_cents, "currency": product.currency},
                 "display_name": "Standard shipping" if settings.shipping_cents else "Free shipping",
             }}]
-        session = stripe.checkout.Session.create(api_key=settings.stripe_secret_key, **params)
+        session = stripe.checkout.Session.create(api_key=owner.stripe_key, **params)
         return RedirectResponse(session.url, status_code=303)
 
     @app.get("/success", response_class=HTMLResponse)
     def success(request: Request, session_id: str):
         try:
-            session = stripe.checkout.Session.retrieve(session_id, api_key=settings.stripe_secret_key)
+            session = stripe.checkout.Session.retrieve(session_id, api_key=owner.stripe_key)
         except stripe.StripeError:
             raise HTTPException(404, "Unknown checkout session")
         order = fulfill(session)
@@ -185,7 +193,7 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
         payload = await request.body()
         try:
             event = stripe.Webhook.construct_event(
-                payload, stripe_signature, settings.stripe_webhook_secret
+                payload, stripe_signature, owner.webhook_secret
             )
         except (ValueError, stripe.SignatureVerificationError):
             raise HTTPException(400, "Bad signature")
@@ -216,8 +224,8 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
         return render(request, "order.html", order=order, product=product)
 
     @app.get("/admin/orders")
-    def admin_orders(status: str | None = None, authorization: str = Header("")):
-        require_admin(authorization)
+    def admin_orders(status: str | None = None, authorization: str = Header(""), admin_session: str = Cookie("")):
+        require_admin(authorization, admin_session)
         orders = store.all(status)
         revenue: dict[str, int] = {}
         for o in orders:
@@ -230,8 +238,8 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
 
     @app.post("/admin/orders/{session_id}/ship")
     def admin_ship(session_id: str, tracking: str = Body("", embed=True),
-                   authorization: str = Header("")):
-        require_admin(authorization)
+                   authorization: str = Header(""), admin_session: str = Cookie("")):
+        require_admin(authorization, admin_session)
         order = store.by_session(session_id)
         product = catalog.get(order.product_id) if order else None
         if product is None or not product.physical:
@@ -248,7 +256,7 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
     @app.get("/print-file/{session_id}")
     def print_file(session_id: str, exp: str = "", sig: str = ""):
         """Signed link from the print-order email: the 3MF for that order's product."""
-        if not verify(settings, "print", session_id, exp, sig):
+        if not verify(owner.signing_secret, "print", session_id, exp, sig):
             raise HTTPException(403, "This link is invalid or has expired")
         order = store.by_session(session_id)
         product = catalog.get(order.product_id) if order else None
@@ -260,7 +268,7 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
     @app.post("/admin/pieces")
     async def admin_publish_piece(request: Request, authorization: str = Header("")):
         """Receive a pipeline bundle (zip) and publish or update that product."""
-        require_admin(authorization)
+        require_admin(authorization)  # token only: the pipeline uploads these
         before = settings.catalog_path.read_text() if settings.catalog_path.exists() else None
         try:
             entry = ingest(settings, await request.body())
@@ -277,9 +285,9 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
 
     @app.post("/admin/products/{product_id}")
     def admin_update_product(product_id: str, price_cents: int | None = Body(None), draft: bool | None = Body(None),
-                             authorization: str = Header("")):
+                             authorization: str = Header(""), admin_session: str = Cookie("")):
         """Set a product's price and/or take it live (draft=false) or hide it (draft=true)."""
-        require_admin(authorization)
+        require_admin(authorization, admin_session)
         try:
             entry = update_product(settings, product_id, price_cents=price_cents, draft=draft)
         except KeyError:
@@ -288,6 +296,101 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
             raise HTTPException(400, str(e))
         reload_catalog()
         return entry
+
+    # ------------------------------------------------------------ admin pages (browser)
+
+    def admin_redirect(msg: str = "", error: bool = False) -> RedirectResponse:
+        from urllib.parse import urlencode
+        q = urlencode({"err" if error else "msg": msg}) if msg else ""
+        return RedirectResponse("/admin" + ("?" + q if q else ""), status_code=303)
+
+    def with_login(resp: RedirectResponse) -> RedirectResponse:
+        resp.set_cookie("admin_session", owner.session_cookie(), max_age=14 * 86400, httponly=True,
+                        samesite="strict", secure=settings.base_url.startswith("https://"), path="/")
+        return resp
+
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin_home(request: Request, msg: str = "", err: str = "", admin_session: str = Cookie("")):
+        if owner.needs_setup:
+            return render(request, "admin.html", state="setup", msg=msg, err=err)
+        if not owner.valid_session(admin_session):
+            return render(request, "admin.html", state="login", msg=msg, err=err)
+        orders = store.all()
+        to_print = [o for o in orders if o.status in ("awaiting_fulfillment", "submitted")]
+        return render(request, "admin.html", state="dashboard", msg=msg, err=err,
+                      payments=owner.payments_info, products=list(catalog.values()),
+                      preview_url=preview_url, to_print=to_print, recent=orders[:20], catalog=catalog,
+                      print_url=print_url, format_address=format_address,
+                      revenue=sum(o.amount_total for o in orders))
+
+    @app.post("/admin/setup")
+    def admin_setup(password: str = Form(...), password2: str = Form(...)):
+        if not owner.needs_setup:
+            return admin_redirect("This store already has an admin password.", error=True)
+        if password != password2:
+            return admin_redirect("The two passwords don't match.", error=True)
+        try:
+            owner.set_password(password)
+        except ValueError as e:
+            return admin_redirect(str(e), error=True)
+        return with_login(admin_redirect("Password set. Next, connect your Stripe account to take payments."))
+
+    @app.post("/admin/login")
+    def admin_login(password: str = Form(...)):
+        if not owner.check_password(password):
+            time.sleep(1)
+            return admin_redirect("Wrong password.", error=True)
+        return with_login(admin_redirect())
+
+    @app.post("/admin/logout")
+    def admin_logout():
+        resp = admin_redirect("Signed out.")
+        resp.delete_cookie("admin_session", path="/")
+        return resp
+
+    @app.post("/admin/payments")
+    def admin_payments(stripe_key: str = Form(...), admin_session: str = Cookie("")):
+        require_admin("", admin_session)
+        try:
+            info = owner.connect_stripe(stripe_key)
+        except ValueError as e:
+            return admin_redirect(str(e), error=True)
+        mode = "test mode: no real money moves" if info["test_mode"] else "live: you're taking real payments"
+        return admin_redirect(f"Connected to Stripe ({info['account']}, {mode}). {info['note']}".strip())
+
+    @app.post("/admin/payments/disconnect")
+    def admin_payments_disconnect(admin_session: str = Cookie("")):
+        require_admin("", admin_session)
+        owner.disconnect_stripe()
+        return admin_redirect("Stripe disconnected. Checkout is off until you connect again.")
+
+    @app.post("/admin/products/{product_id}/form")
+    def admin_product_form(product_id: str, price: str = Form(""), action: str = Form("save"),
+                           admin_session: str = Cookie("")):
+        require_admin("", admin_session)
+        fields: dict = {}
+        if price.strip():
+            try:
+                fields["price_cents"] = int(round(float(price.strip().lstrip("$")) * 100))
+            except ValueError:
+                return admin_redirect("Enter the price as a number, like 189 or 189.00.", error=True)
+        if action in ("live", "hide"):
+            fields["draft"] = action == "hide"
+        try:
+            update_product(settings, product_id, **fields)
+        except KeyError:
+            return admin_redirect("No such product.", error=True)
+        except BundleError as e:
+            return admin_redirect(str(e), error=True)
+        reload_catalog()
+        return admin_redirect({"live": "It's live on the storefront.", "hide": "Hidden from the storefront."}
+                              .get(action, "Saved."))
+
+    @app.post("/admin/orders/{session_id}/ship-form")
+    def admin_ship_form(session_id: str, tracking: str = Form(""), admin_session: str = Cookie("")):
+        require_admin("", admin_session)
+        admin_ship(session_id, tracking, authorization="", admin_session=admin_session)
+        return admin_redirect("Marked as shipped. The buyer has been emailed (if email is set up).")
 
     @app.get("/healthz")
     def healthz():

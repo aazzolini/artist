@@ -59,6 +59,23 @@ class OrderStore:
                 )"""
             )
 
+        with self._conn() as c:
+            c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+
+    # -- owner settings saved from the admin page (payment keys, password hash, ...)
+    def get_setting(self, key: str, default: str = "") -> str:
+        with self._conn() as c:
+            row = c.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key: str, value: str | None) -> None:
+        with self._conn() as c:
+            if value is None:
+                c.execute("DELETE FROM settings WHERE key = ?", (key,))
+            else:
+                c.execute("INSERT INTO settings VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                          (key, value))
+
     def _conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, isolation_level=None)
         conn.row_factory = sqlite3.Row

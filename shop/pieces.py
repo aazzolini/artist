@@ -121,14 +121,14 @@ def _sig(secret: str, *parts: str) -> str:
     return hmac.new(secret.encode(), ":".join(parts).encode(), hashlib.sha256).hexdigest()[:32]
 
 
-def sign(settings: Settings, kind: str, key: str, ttl_s: int | None = 14 * 86400) -> str:
+def sign(secret: str, kind: str, key: str, ttl_s: int | None = 14 * 86400) -> str:
     exp = str(int(time.time()) + ttl_s) if ttl_s else "0"
-    return f"exp={exp}&sig={_sig(settings.admin_token, kind, key, exp)}"
+    return f"exp={exp}&sig={_sig(secret, kind, key, exp)}"
 
 
-def verify(settings: Settings, kind: str, key: str, exp: str, sig: str) -> bool:
-    if not settings.admin_token or not exp.isdigit():
+def verify(secret: str, kind: str, key: str, exp: str, sig: str) -> bool:
+    if not secret or not exp.isdigit():
         return False
     if exp != "0" and int(exp) < time.time():
         return False
-    return hmac.compare_digest(sig, _sig(settings.admin_token, kind, key, exp))
+    return hmac.compare_digest(sig, _sig(secret, kind, key, exp))

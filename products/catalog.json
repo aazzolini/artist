@@ -7,6 +7,7 @@
     "price_cents": 3900,
     "currency": "usd",
     "file": "files/sample-figure.stl",
-    "image": "sample-figure.svg"
+    "image": "sample-figure.svg",
+    "draft": true
   }
 ]

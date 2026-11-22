@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Admin · {{ store_name }}{% endblock %}
+{% block body %}
+<style>
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 12px; }
+  .stack { display: grid; gap: 20px; }
+  .flash { padding: 10px 14px; border-radius: 8px; background: #e3f6e8; color: #14532d; }
+  .flash.err { background: #fde8e8; color: #7f1d1d; }
+  input[type=password], input[type=text] { font: inherit; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); min-width: 0; }
+  form.inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .85em; border: 1px solid var(--line); }
+  .pill.ok { background: #e3f6e8; color: #14532d; border-color: #b7e4c4; }
+  .pill.warn { background: #fff4d6; color: #6b4e00; border-color: #f2d98c; }
+  .row { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 14px; align-items: start; padding-top: 12px; border-top: 1px solid var(--line); }
+  .row img { width: 72px; height: 88px; object-fit: cover; border-radius: 6px; background: var(--line); }
+  .muted { color: var(--muted); }
+  .secondary { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  pre.addr { margin: 0; font: inherit; white-space: pre-wrap; }
+  ol { margin: 0; padding-left: 20px; }
+  h2 { margin: 0; font-size: 1.2em; }
+</style>
+<div class="stack" style="max-width: 760px">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap">
+    <h1 style="margin:0">{{ store_name }} admin</h1>
+    {% if state == "dashboard" %}<form method="post" action="/admin/logout"><button class="secondary" type="submit">Sign out</button></form>{% endif %}
+  </div>
+  {% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
+  {% if err %}<p class="flash err">{{ err }}</p>{% endif %}
+
+  {% if state == "setup" %}
+  <section class="panel">
+    <h2>Create your admin password</h2>
+    <p class="muted" style="margin:0">This is the only password for managing the store. Do this right after the store goes online.</p>
+    <form method="post" action="/admin/setup" class="stack" style="gap:10px">
+      <input type="password" id="password" name="password" placeholder="Password (10+ characters)" autocomplete="new-password" required minlength="10">
+      <input type="password" id="password2" name="password2" placeholder="Same password again" autocomplete="new-password" required minlength="10">
+      <button type="submit">Create password</button>
+    </form>
+  </section>
+
+  {% elif state == "login" %}
+  <section class="panel">
+    <h2>Sign in</h2>
+    <form method="post" action="/admin/login" class="inline">
+      <input type="password" id="login-password" name="password" placeholder="Admin password" autocomplete="current-password" required style="flex:1">
+      <button type="submit">Sign in</button>
+    </form>
+  </section>
+
+  {% else %}
+  <section class="panel">
+    <h2>Payments</h2>
+    {% if payments.connected %}
+      <p style="margin:0">
+        <span class="pill ok">Connected</span>
+        {% if payments.test_mode %}<span class="pill warn">Test mode: no real money</span>{% endif %}
+        Stripe account: <strong>{{ payments.account or "your account" }}</strong>
+      </p>
+      <p class="muted" style="margin:0">Buyers pay on Stripe's secure checkout page. Stripe sends the money to your bank account.
+        {% if not payments.webhook %}Order notifications from Stripe aren't registered (the store needs a public https address), so orders are recorded when buyers return to the thank-you page.{% endif %}</p>
+      <form method="post" action="/admin/payments" class="inline">
+        <input type="password" id="stripe-key-replace" name="stripe_key" placeholder="Paste a different secret key to switch" style="flex:1" autocomplete="off">
+        <button class="secondary" type="submit">Switch key</button>
+      </form>
+      <form method="post" action="/admin/payments/disconnect"><button class="secondary" type="submit">Disconnect Stripe</button></form>
+    {% else %}
+      <p style="margin:0"><span class="pill warn">Not connected</span> Checkout is off until you connect a Stripe account.</p>
+      <ol>
+        <li>Sign in or sign up at <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">dashboard.stripe.com/apikeys</a>. Stripe asks for your bank details there, so you can get paid.</li>
+        <li>Copy the <strong>Secret key</strong> (it starts with <code>sk_live_</code>, or <code>sk_test_</code> to try things out first).</li>
+        <li>Paste it here. The store checks it and sets up order notifications automatically.</li>
+      </ol>
+      <form method="post" action="/admin/payments" class="inline">
+        <input type="password" id="stripe-key" name="stripe_key" placeholder="sk_live_… or sk_test_…" required style="flex:1" autocomplete="off">
+        <button type="submit">Connect Stripe</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Orders to print <span class="muted" style="font-weight:400">({{ to_print|length }})</span></h2>
+    {% for o in to_print %}{% set p = catalog.get(o.product_id) %}
+    <div class="row">
+      {% if p and p.image %}<img src="/images/{{ p.image }}" alt="">{% else %}<span></span>{% endif %}
+      <div style="display:grid; gap:8px; min-width:0">
+        <strong>{{ p.name if p else o.product_id }}</strong>
+        <pre class="addr">{{ format_address(o.ship_name, o.address) }}</pre>
+        <span class="muted">{{ o.email }} · paid {{ "%.2f"|format(o.amount_total / 100) }} {{ o.currency|upper }}</span>
+        {% if p and p.physical %}<p style="margin:0"><a class="btn" href="{{ print_url(o) }}">Download print file</a>
+          <span class="muted"> Upload it to your print service with the address above.</span></p>{% endif %}
+        {% if p and p.print_notes %}<details><summary class="muted">Instructions for the print service</summary><p style="margin:6px 0 0">{{ p.print_notes }}</p></details>{% endif %}
+        <form method="post" action="/admin/orders/{{ o.session_id }}/ship-form" class="inline">
+          <input type="text" id="tracking-{{ loop.index }}" name="tracking" placeholder="Tracking number" style="flex:1">
+          <button type="submit">Mark shipped</button>
+        </form>
+      </div>
+    </div>
+    {% else %}<p class="muted" style="margin:0">Nothing to print right now.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <h2>Products</h2>
+    {% for p in products %}
+    <div class="row">
+      {% if p.image %}<img src="/images/{{ p.image }}" alt="">{% else %}<span></span>{% endif %}
+      <div style="display:grid; gap:8px; min-width:0">
+        <div><strong>{{ p.name }}</strong> {% if p.draft %}<span class="pill warn">Draft</span>{% else %}<span class="pill ok">Live</span>{% endif %}</div>
+        <span class="muted">{% if p.price_cents %}{{ p.price_display }}{% else %}No price yet{% endif %}
+          {% if p.model %} · <a href="{{ preview_url(p.id) }}" target="_blank" rel="noopener">View page</a>{% endif %}</span>
+        <form method="post" action="/admin/products/{{ p.id }}/form" class="inline">
+          <label for="price-{{ loop.index }}" class="muted">Price ($)</label>
+          <input type="text" id="price-{{ loop.index }}" name="price" inputmode="decimal" value="{{ '%.2f'|format(p.price_cents / 100) if p.price_cents else '' }}" style="width:7em">
+          <button class="secondary" type="submit" name="action" value="save">Save</button>
+          {% if p.draft %}<button type="submit" name="action" value="live">Go live</button>
+          {% else %}<button class="secondary" type="submit" name="action" value="hide">Hide</button>{% endif %}
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+
+  <section class="panel">
+    <h2>Sales</h2>
+    <p style="margin:0">{{ recent|length }} recent orders · {{ "%.2f"|format(revenue / 100) }} total paid</p>
+    {% for o in recent[:10] %}<span class="muted">{{ o.product_id }} · {{ o.status.replace("_", " ") }} · {{ "%.2f"|format(o.amount_total / 100) }} {{ o.currency|upper }}</span>{% endfor %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

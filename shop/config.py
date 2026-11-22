@@ -62,7 +62,8 @@ def load_settings() -> Settings:
     return Settings(
         stripe_secret_key=env("STRIPE_SECRET_KEY", ""),
         stripe_webhook_secret=env("STRIPE_WEBHOOK_SECRET", ""),
-        base_url=env("BASE_URL", "http://localhost:8000").rstrip("/"),
+        # Render sets RENDER_EXTERNAL_URL to the service's public address, so nothing to configure there.
+        base_url=(env("BASE_URL") or env("RENDER_EXTERNAL_URL") or "http://localhost:8000").rstrip("/"),
         store_name=env("STORE_NAME", "My Store"),
         products_dir=products_dir,
         catalog_path=Path(env("CATALOG_PATH", products_dir / "catalog.json")),
