@@ -21,3 +21,17 @@ services:
         value: My Store
       - key: ADMIN_TOKEN
         generateValue: true
+      - key: SHIPPING_CENTS
+        value: "599"
+      - key: SHIP_COUNTRIES
+        value: US
+      - key: OWNER_EMAIL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false

@@ -21,6 +21,11 @@
     button, .btn { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 16px;
                    font:inherit; cursor:pointer; text-decoration:none; display:inline-block; text-align:center; }
     .muted { color: var(--muted); }
+    .card img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px; background:var(--line); }
+    .tag { font-size:.8em; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+    .steps { display:flex; gap:8px; flex-wrap:wrap; padding:0; list-style:none; }
+    .steps li { padding:6px 12px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+    .steps li.done { background:var(--accent); border-color:var(--accent); color:#fff; }
   </style>
 </head>
 <body><main>{% block body %}{% endblock %}</main></body>

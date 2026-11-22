@@ -4,9 +4,11 @@
 <div class="grid">
   {% for p in products %}
   <div class="card">
+    {% if p.image %}<img src="/images/{{ p.image }}" alt="{{ p.name }}" loading="lazy">{% endif %}
+    <span class="tag">{{ "3D-printed figure" if p.physical else "Digital download" }}</span>
     <h2 style="margin:0">{{ p.name }}</h2>
     <p>{{ p.description }}</p>
-    <div class="price">{{ p.price_display }}</div>
+    <div class="price">{{ p.price_display }}{% if p.physical %} <span class="muted" style="font-weight:400;font-size:.8em">+ shipping</span>{% endif %}</div>
     <form method="post" action="/buy/{{ p.id }}"><button type="submit" style="width:100%">Buy now</button></form>
   </div>
   {% else %}

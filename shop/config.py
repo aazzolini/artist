@@ -15,7 +15,13 @@ class Product:
     description: str
     price_cents: int
     currency: str
-    file: str  # path relative to PRODUCTS_DIR
+    file: str  # relative to PRODUCTS_DIR. digital: what the buyer downloads; physical: the 3D model sent to the printer
+    kind: str = "digital"  # "digital" or "physical"
+    image: str = ""  # filename inside PRODUCTS_DIR/images, shown on the storefront
+
+    @property
+    def physical(self) -> bool:
+        return self.kind == "physical"
 
     @property
     def price_display(self) -> str:
@@ -39,6 +45,9 @@ class Settings:
     smtp_password: str
     smtp_from: str
     admin_token: str
+    owner_email: str
+    shipping_cents: int
+    ship_countries: tuple[str, ...]
 
 
 def load_settings() -> Settings:
@@ -60,6 +69,9 @@ def load_settings() -> Settings:
         smtp_password=env("SMTP_PASSWORD", ""),
         smtp_from=env("SMTP_FROM", ""),
         admin_token=env("ADMIN_TOKEN", ""),
+        owner_email=env("OWNER_EMAIL", ""),
+        shipping_cents=int(env("SHIPPING_CENTS", "599")),
+        ship_countries=tuple(c.strip().upper() for c in env("SHIP_COUNTRIES", "US").split(",") if c.strip()),
     )
 
 
@@ -74,13 +86,23 @@ def load_catalog(settings: Settings) -> dict[str, Product]:
             price_cents=int(item["price_cents"]),
             currency=item.get("currency", "usd").lower(),
             file=item["file"],
+            kind=item.get("kind", "digital"),
+            image=item.get("image", ""),
         )
-        path = (settings.products_dir / p.file).resolve()
-        if not path.is_relative_to(settings.products_dir.resolve()):
-            raise ValueError(f"Product {p.id}: file escapes PRODUCTS_DIR")
-        if not path.is_file():
-            raise FileNotFoundError(f"Product {p.id}: missing file {path}")
+        if p.kind not in ("digital", "physical"):
+            raise ValueError(f"Product {p.id}: kind must be 'digital' or 'physical'")
+        _check_file(settings.products_dir, p.file, p.id)
+        if p.image:
+            _check_file(settings.products_dir / "images", p.image, p.id)
         if p.price_cents < 50:
             raise ValueError(f"Product {p.id}: Stripe minimum charge is 50 cents")
         catalog[p.id] = p
     return catalog
+
+
+def _check_file(base: Path, rel: str, product_id: str) -> None:
+    path = (base / rel).resolve()
+    if not path.is_relative_to(base.resolve()):
+        raise ValueError(f"Product {product_id}: {rel} escapes {base}")
+    if not path.is_file():
+        raise FileNotFoundError(f"Product {product_id}: missing file {path}")
