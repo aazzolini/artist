@@ -87,3 +87,26 @@ that calls that API and returns its order ID, and select it in `make_fulfiller`.
 ```bash
 pip install -r requirements-dev.txt && pytest -q
 ```
+
+## Relief artwork: printing News in Letters pieces in color and depth
+
+`relief/` turns a News in Letters drawing script into a full-color, high-relief plaque.
+The picture is made of raised letters, and each object in the scene sits at its own depth.
+
+```bash
+pip install -r requirements-dev.txt
+python -m relief.build 2026-11-16-15 --width-mm 200 --cols 133 --out out/
+# -> out/2026-11-16-15-133c/: .3mf and OBJ zip (colored, watertight), previews, letters.txt
+```
+
+- `relief/studio.py` and `relief/pieces/p_<id>.py` are the site's own drawing scripts. They're re-run at
+  print resolution, and every layer they paint is recorded.
+- `relief/pieces/s_<id>.py` sets each layer's depth (mm) and color. Adding a piece takes a drawing script
+  plus this short spec.
+- **Letter size:** letters about 1.5 mm wide (133 across a 20 cm plaque) are readable from 30 cm and
+  have 0.4 mm strokes. Bigger plaques should get more letters, not bigger ones: for example, 200 across 30 cm.
+- Output: a 3 mm base plus up to about 9.5 mm of relief. The 1.5M-triangle mesh keeps the letters to within
+  0.02 mm (95th percentile). Upload the `.3mf`, or the OBJ zip if a service prefers it, as a
+  **full-color PolyJet** print (Craftcloud, Xometry, Stratasys Direct, Unionfab).
+
+Sample previews: `relief/samples/the-catch-200mm/`.

@@ -1,0 +1,17 @@
+{
+ "previews": {
+  "room": "preview_room.png",
+  "closeup": "preview_closeup.png",
+  "3d": "preview_3d.png"
+ },
+ "size_mm": [
+  199.4,
+  244.1,
+  12.6
+ ],
+ "triangles": 1500000,
+ "letters": [
+  133,
+  111
+ ]
+}
