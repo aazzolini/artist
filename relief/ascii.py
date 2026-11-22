@@ -50,11 +50,11 @@ def _hash(x: int, y: int) -> float:
     return ((n ^ (n >> 16)) & 0xFFFFFFFF) / 4294967296.0
 
 
-def to_letters(field: np.ndarray, cols: int, at: Atlas | None = None) -> np.ndarray:
+def to_letters(field: np.ndarray, cols: int, at: Atlas | None = None, rows: int | None = None) -> np.ndarray:
     """field: 2D array in 0..1 (any resolution). Returns (rows, cols) array of palette indices."""
     at = at or atlas()
     h, w = field.shape
-    rows = int(round(cols * (h / w) / CELL_ASPECT))
+    rows = rows or int(round(cols * (h / w) / CELL_ASPECT))
     small = np.asarray(Image.fromarray(field.astype(np.float32)).resize((cols, rows), Image.BOX))
     dmax = at.dens[-1]
     tol = 0.03 * dmax

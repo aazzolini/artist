@@ -33,3 +33,12 @@ def test_catch_builds_a_watertight_colored_solid(tmp_path):
         assert {"catch.obj", "catch.mtl", "catch.png"} <= set(z.namelist())
     for name in info["previews"].values():
         assert (out / name).stat().st_size > 1000
+
+
+def test_frame_surrounds_picture_and_stands_proud():
+    plain = build("2026-11-16-15", width_mm=40, cols=27)
+    framed = build("2026-11-16-15", width_mm=40, cols=27, frame_mm=6)
+    assert framed.letters.shape[1] > plain.letters.shape[1] and framed.letters.shape[0] > plain.letters.shape[0]
+    edge = framed.body[:, : int(6 * framed.px_per_mm)]  # left frame band
+    assert edge.max() > plain.body.max() - 1  # the crest rises to about the picture's tallest objects
+    assert framed.height.shape[1] / framed.px_per_mm > 40 + 2 * 5

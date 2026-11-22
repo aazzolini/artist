@@ -95,7 +95,7 @@ The picture is made of raised letters, and each object in the scene sits at its 
 
 ```bash
 pip install -r requirements-dev.txt
-python -m relief.build 2026-11-16-15 --width-mm 200 --cols 133 --out out/
+python -m relief.build 2026-11-16-15 --width-mm 200 --cols 133 --frame-mm 15 --out out/
 # -> out/2026-11-16-15-133c/: .3mf and OBJ zip (colored, watertight), previews, letters.txt
 ```
 
@@ -109,13 +109,19 @@ python -m relief.build 2026-11-16-15 --width-mm 200 --cols 133 --out out/
   0.02 mm (95th percentile). Upload the `.3mf`, or the OBJ zip if a service prefers it, as a
   **full-color PolyJet** print (Craftcloud, Xometry, Stratasys Direct, Unionfab).
 
-Sample previews: `relief/samples/the-catch-200mm/`.
+- **Frame:** `--frame-mm 15` (the default) adds a sculpted molding around the picture, made of the same
+  letters. It has a lip, a rounded crest 11 mm above the base, a cove and a bead, with mitered corners
+  and gilt-to-bronze color. The letters are dense where the molding faces the light. Use `--frame-mm 0`
+  for none. The frame nearly doubles the print volume (367 vs 196 cm³ for The Catch), which matters
+  because full-color prints are usually priced by volume.
+
+Sample previews: `relief/samples/the-catch-framed/`.
 
 **3D web preview:** each build also writes the web model. `<name>.model.json` holds the glTF and
 base64 geometry, and `<name>-0..2.png` are the color, letter-detail and gloss maps. The shape is about
 200k triangles, and the raised letters come from a full-resolution normal map. `relief/viewer/index.html`
 is a three.js viewer for it: orbit, zoom into the letters, move or sweep the light, and switch between
-matte, satin and gloss finishes. Put the web model files next to it, named `the-catch.*`, or change the
+matte, satin and gloss finishes. Put the web model files next to it, named `the-catch-framed.*`, or change the
 filename in the page. The page rebuilds the model in memory, so it never fetches `data:` or `blob:` URLs.
 That matters because strict hosts, such as claude.ai artifacts, block those fetches. (`<name>.glb` is
 also written for desktop 3D viewers.)

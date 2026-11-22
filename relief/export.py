@@ -93,9 +93,21 @@ def mesh(r: Relief, target_tris: int = 1_500_000, height: np.ndarray | None = No
     r0, r1 = ring, np.roll(ring, -1)
     walls = np.vstack([np.column_stack([r0, r1, r1 + n]), np.column_stack([r0, r1 + n, r0 + n])])
     faces = np.vstack([top_f, bot_f, walls]).astype(np.int64)
-    reduction = max(0.0, 1 - target_tris / len(faces))
-    v2, f2 = fast_simplification.simplify(verts, faces, target_reduction=reduction, agg=7)
-    return v2.astype(np.float32), f2.astype(np.int64), (W - 1) * s, (H - 1) * s
+    # Quadric simplification occasionally pinches an edge (shared by 4 faces), which makes the
+    # solid non-manifold. Print services reject that, so retry with a nudged budget until clean.
+    for attempt in range(6):
+        budget = target_tris * (1 + 0.03 * attempt)
+        reduction = max(0.0, 1 - budget / len(faces))
+        v2, f2 = fast_simplification.simplify(verts, faces, target_reduction=reduction, agg=7)
+        if _is_closed_manifold(f2):
+            return v2.astype(np.float32), f2.astype(np.int64), (W - 1) * s, (H - 1) * s
+    raise RuntimeError("mesh simplification kept producing non-manifold edges")
+
+
+def _is_closed_manifold(faces: np.ndarray) -> bool:
+    e = np.sort(np.vstack([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]), axis=1)
+    _, counts = np.unique(e, axis=0, return_counts=True)
+    return bool(np.all(counts == 2))
 
 
 def _uv(v: np.ndarray, wmm: float, hmm: float) -> np.ndarray:

@@ -1,0 +1,26 @@
+{
+ "previews": {
+  "room": "preview_room.png",
+  "closeup": "preview_closeup.png",
+  "3d": "preview_3d.png"
+ },
+ "glb_triangles": 200000,
+ "glb_mb": 8.6,
+ "gltf_json_mb": 11.5,
+ "web_files": {
+  "the-catch-framed-0.png": 1726828,
+  "the-catch-framed-1.png": 1877776,
+  "the-catch-framed-2.png": 623708,
+  "the-catch-framed.model.json": 5868220
+ },
+ "size_mm": [
+  229.4,
+  274.9,
+  14.6
+ ],
+ "triangles": 1589998,
+ "letters": [
+  153,
+  125
+ ]
+}

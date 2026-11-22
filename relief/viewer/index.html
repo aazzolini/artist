@@ -54,7 +54,7 @@ footer p { margin: 0 0 6px; }
 <div class="page">
   <header>
     <h1>The Catch, <em>in relief</em></h1>
-    <p class="lede">The Starship tower catch from News in Letters, built as a full-color sculpted plaque. The picture is made of raised letters, and every object sits at its own depth.</p>
+    <p class="lede">The Starship tower catch from News in Letters, built as a full-color sculpted plaque in a carved letter frame. The picture is made of raised letters, and every object sits at its own depth.</p>
   </header>
 
   <div class="stage" id="stage">
@@ -70,6 +70,7 @@ footer p { margin: 0 0 6px; }
         <button type="button" id="v-front" aria-pressed="true">Front</button>
         <button type="button" id="v-angle" aria-pressed="false">Angled</button>
         <button type="button" id="v-letters" aria-pressed="false">Letters up close</button>
+        <button type="button" id="v-frame" aria-pressed="false">Frame up close</button>
       </div>
     </div>
     <div class="group">
@@ -89,9 +90,9 @@ footer p { margin: 0 0 6px; }
   </section>
 
   <dl class="facts">
-    <div><dt>Size</dt><dd>199 × 244 mm · 12.6 mm deep</dd></div>
-    <div><dt>Letters</dt><dd>133 × 111 · each 1.5 × 2.2 mm</dd></div>
-    <div><dt>Relief</dt><dd>3 mm base · objects to 9 mm · letters +0.6 mm</dd></div>
+    <div><dt>Size</dt><dd>229 × 275 mm · 14.6 mm deep</dd></div>
+    <div><dt>Letters</dt><dd>153 × 125 · each 1.5 × 2.2 mm</dd></div>
+    <div><dt>Relief</dt><dd>3 mm base · objects to 9 mm · frame crest 11 mm · letters +0.6 mm</dd></div>
     <div><dt>Print</dt><dd>Full-color PolyJet</dd></div>
   </dl>
 
@@ -147,7 +148,7 @@ key.castShadow = true;
 key.shadow.mapSize.set(4096, 4096);
 key.shadow.bias = -0.00015;
 key.shadow.normalBias = 0.0004;
-Object.assign(key.shadow.camera, { left: -0.18, right: 0.18, top: 0.18, bottom: -0.18, near: 0.05, far: 1.5 });
+Object.assign(key.shadow.camera, { left: -0.2, right: 0.2, top: 0.2, bottom: -0.2, near: 0.05, far: 1.5 });
 scene.add(key, key.target);
 
 let center = new THREE.Vector3(0.0997, 0.122, 0.006), size = new THREE.Vector3(0.2, 0.244, 0.0126), mesh = null, mats = [];
@@ -168,13 +169,17 @@ const views = {
   front: () => ({ pos: new THREE.Vector3(center.x, center.y, center.z + 0.62), tgt: center.clone() }),
   angle: () => ({ pos: new THREE.Vector3(center.x + 0.3, center.y - 0.2, center.z + 0.42), tgt: center.clone() }),
   letters: () => {
-    const t = new THREE.Vector3(0.45 * size.x, (1 - 0.40) * size.y, 0.011);
+    const t = new THREE.Vector3(0.456 * size.x, (1 - 0.405) * size.y, 0.011);
     return { pos: t.clone().add(new THREE.Vector3(0.012, -0.018, 0.045)), tgt: t };
+  },
+  frame: () => {
+    const t = new THREE.Vector3(0.035 * size.x, (1 - 0.03) * size.y, 0.012);
+    return { pos: t.clone().add(new THREE.Vector3(0.05, -0.045, 0.05)), tgt: t };
   },
 };
 let fly = null;
 function go(name) {
-  for (const n of ["front", "angle", "letters"]) $("v-" + n).setAttribute("aria-pressed", String(n === name));
+  for (const n of ["front", "angle", "letters", "frame"]) $("v-" + n).setAttribute("aria-pressed", String(n === name));
   flyTo(views[name]());
 }
 function flyTo({ pos, tgt }) {
@@ -262,7 +267,7 @@ async function loadModel(url) {
   return new Promise((ok, fail) => new GLTFLoader().parse(glb, "./", ok, fail));
 }
 
-loadModel("the-catch.model.json").then(onModel).catch(err => {
+loadModel("the-catch-framed.model.json").then(onModel).catch(err => {
   console.error(err);
   status.textContent = "The model didn't load (" + (err && err.message || err) + "). Reload the page to try again.";
 });
@@ -282,6 +287,7 @@ canvas.addEventListener("dblclick", e => {
 $("v-front").addEventListener("click", () => go("front"));
 $("v-angle").addEventListener("click", () => go("angle"));
 $("v-letters").addEventListener("click", () => go("letters"));
+$("v-frame").addEventListener("click", () => go("frame"));
 $("az").addEventListener("input", placeLight);
 $("el").addEventListener("input", placeLight);
 $("rake").addEventListener("click", () => { $("el").value = "8"; placeLight(); });
