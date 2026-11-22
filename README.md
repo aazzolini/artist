@@ -135,3 +135,58 @@ matte, satin and gloss finishes. Put the web model files next to it, named `the-
 filename in the page. The page rebuilds the model in memory, so it never fetches `data:` or `blob:` URLs.
 That matters because strict hosts, such as claude.ai artifacts, block those fetches. (`<name>.glb` is
 also written for desktop 3D viewers.)
+
+## Automated pipeline: from a drawing script to a product page
+
+```
+relief/pieces/p_<id>.py  (a News in Letters drawing script; optional r_<id>.json with title/headline)
+   │  git push to main
+   ▼
+GitHub Action "Relief pieces" (.github/workflows/relief-pieces.yml), for each new or changed piece:
+   1. spec      Claude reads the script plus a measured table of its layers and returns depth, shape and
+                color for each layer as schema-checked JSON (relief/spec.py). No generated code runs.
+                Without ANTHROPIC_API_KEY, or if Claude declines, a heuristic spec is used. A
+                hand-written s_<id>.py always wins. Generated specs are committed back for review.
+   2. build     framed, ready-to-hang relief: print.3mf, web 3D model, previews
+   3. QA        watertight, consistent winding, every edge joining exactly two faces, size limits,
+                letter size, mesh accuracy on the letters (p95 ≤ 0.1 mm), two level keyholes.
+                Any failure stops the piece.
+   4. price     from measured volume and pricing.json. No rates set means no price, so it's a draft.
+   5. publish   bundle.zip → POST {STORE_URL}/admin/pieces (ADMIN_TOKEN)
+   ▼
+Store: /p/<id> product page with the 3D viewer. Drafts are hidden from the storefront and can't be
+bought; the publish response includes a private preview link.
+   ▼
+Order paid → print-order email to OWNER_EMAIL: shipping address, print-service instructions, and a
+signed 14-day link to the print file (never public). Place it with your print service, then
+POST /admin/orders/<id>/ship with the tracking number, and the buyer is emailed.
+```
+
+Run it locally (same steps):
+
+```bash
+pip install -r requirements-dev.txt anthropic
+ADMIN_TOKEN=... python -m relief.pipeline run 2026-11-16-15 --store https://your-store.example
+python -m relief.pipeline run <id> --no-claude            # heuristic spec
+python -m relief.pipeline spec <id>                       # (re)generate just the spec
+python -m relief.pipeline changed --since HEAD~3          # which pieces changed
+```
+
+Owner controls on the store:
+
+```bash
+# set a price and take a piece live (or {"draft": true} to hide it)
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+     -d '{"price_cents": 18900, "draft": false}' https://your-store.example/admin/products/<id>
+```
+
+Once you have real print quotes, fill in `print_cost_per_cm3` and `print_cost_base` in `pricing.json`.
+New pieces are then priced automatically. A republished piece with no price keeps the price you set.
+
+**What isn't automated yet:** placing the order with the print service. I couldn't verify a
+full-color print API that ships to customers, so `shop/fulfillment.py` emails you instead. Once you
+have API access and docs from a service, a class with a `submit(order, product, print_url)` method
+that calls their API slots in through `make_fulfiller`.
+
+Repository secrets for the Action: `STORE_URL`, `ADMIN_TOKEN`, and optionally `ANTHROPIC_API_KEY`.
+On the store, set `OWNER_EMAIL` and `SMTP_*` so print orders reach you.

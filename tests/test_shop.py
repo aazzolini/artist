@@ -18,8 +18,9 @@ class FakeFulfiller:
     def __init__(self, ref="ref-1"):
         self.ref, self.calls = ref, []
 
-    def submit(self, order, product):
+    def submit(self, order, product, print_url=""):
         self.calls.append((order, product))
+        self.print_urls = getattr(self, "print_urls", []) + [print_url]
         return self.ref
 
 

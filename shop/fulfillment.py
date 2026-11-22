@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 
 class Fulfiller(Protocol):
-    def submit(self, order: Order, product: Product) -> str | None: ...
+    def submit(self, order: Order, product: Product, print_url: str = "") -> str | None: ...
 
 
 def format_address(name: str, addr: dict) -> str:
@@ -35,10 +35,14 @@ class EmailOwnerFulfiller:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    def submit(self, order: Order, product: Product) -> str | None:
+    def submit(self, order: Order, product: Product, print_url: str = "") -> str | None:
         s = self.settings
         body = (
             f"New order to print and ship: {product.name}\n\n"
+            f"Print file: {print_url or product.file}\n"
+            + (f"  (download link valid 14 days; upload it to your print service)\n" if print_url else "")
+            + (f"\nInstructions for the print service:\n{product.print_notes}\n" if product.print_notes else "")
+            + "\n"
             f"Model file: {product.file} (attached if under 15 MB)\n"
             f"Order: {order.session_id}\n"
             f"Buyer email: {order.email}\n\n"

@@ -1,0 +1,81 @@
+# New or changed piece in relief/pieces/ -> spec (Claude) -> relief build -> QA -> publish to the store.
+# Repository secrets: STORE_URL (e.g. https://your-store.onrender.com), ADMIN_TOKEN (same as the store's),
+# ANTHROPIC_API_KEY (optional: without it, specs come from the heuristic).
+name: Relief pieces
+
+on:
+  push:
+    branches: [main]
+    paths: ["relief/pieces/**"]
+  workflow_dispatch:
+    inputs:
+      pieces:
+        description: "Piece ids to (re)build, space separated"
+        required: true
+
+permissions:
+  contents: write  # to commit auto-generated spec files back
+
+concurrency:
+  group: relief-pieces
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          sudo apt-get update && sudo apt-get install -y fonts-jetbrains-mono fonts-dejavu-core
+          pip install -r requirements-dev.txt anthropic
+
+      - name: Pick pieces
+        id: which
+        env:
+          INPUT_PIECES: ${{ github.event.inputs.pieces }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$INPUT_PIECES" ]; then
+            ids="$INPUT_PIECES"
+          else
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then BEFORE=HEAD~1; fi
+            ids="$(python -m relief.pipeline changed --since "$BEFORE" | tr '\n' ' ')"
+          fi
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+          echo "Pieces: ${ids:-none}"
+
+      - name: Build, check and publish
+        if: steps.which.outputs.ids != ''
+        env:
+          IDS: ${{ steps.which.outputs.ids }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STORE_URL: ${{ secrets.STORE_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: python -m relief.pipeline run $IDS   # ids are validated against ^[a-z0-9][a-z0-9-]+$
+
+      - name: Keep the bundles
+        if: always() && steps.which.outputs.ids != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: relief-bundles
+          path: out/*/bundle.zip
+          retention-days: 30
+
+      - name: Commit generated specs
+        if: steps.which.outputs.ids != ''
+        run: |
+          git add relief/pieces/s_*.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git -c user.name="relief-pipeline" -c user.email="actions@users.noreply.github.com" \
+              commit -m "Add auto-generated relief specs"
+            git push
+          fi

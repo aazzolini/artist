@@ -101,10 +101,23 @@ def frame_profile(t: np.ndarray) -> np.ndarray:
     return np.where(t <= 0, 0.0, h)
 
 
+def load_spec(piece: str) -> dict:
+    """A piece's depth/color spec: hand-written s_<id>.py if present, else s_<id>.json (written by
+    the pipeline's auto-spec step), converted to the same form."""
+    py, js = HERE / "pieces" / f"s_{piece}.py", HERE / "pieces" / f"s_{piece}.json"
+    if py.exists():
+        return runpy.run_path(str(py))
+    if js.exists():
+        from .spec import from_json
+        return from_json(json.loads(js.read_text()))
+    raise FileNotFoundError(f"no spec for {piece}: write {py.name} or run the pipeline's spec step")
+
+
 def build(piece: str, width_mm: float = 200, cols: int = 133, px_per_mm: float = 10,
-          base_mm: float = 3.0, letter_mm: float = 0.6, frame_mm: float = 0.0) -> Relief:
+          base_mm: float = 3.0, letter_mm: float = 0.6, frame_mm: float = 0.0,
+          spec: dict | None = None) -> Relief:
     """width_mm and cols describe the picture; frame_mm adds a sculpted letter frame around it."""
-    spec = runpy.run_path(str(HERE / "pieces" / f"s_{piece}.py"))
+    spec = spec or load_spec(piece)
     at = atlas()
     cell_w = int(round(width_mm / cols * px_per_mm))
     cell_h = int(round(cell_w * CELL_ASPECT))

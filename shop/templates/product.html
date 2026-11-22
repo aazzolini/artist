@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} · {{ store_name }}{% endblock %}
+{% block body %}
+<style>
+  .stage { position: relative; width: 100%; height: min(70vh, 640px); min-height: 340px; border-radius: 12px; overflow: hidden;
+           background: radial-gradient(ellipse at 50% 40%, #1a2030 0%, #10141e 70%); border: 1px solid var(--line); }
+  #gl { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  .status { position: absolute; inset: 0; display: grid; place-items: center; color: #aab; padding: 16px; text-align: center; pointer-events: none; }
+  .hint { position: absolute; left: 12px; right: 12px; bottom: 8px; margin: 0; color: #aab; font-size: 12px; pointer-events: none; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row button { background: var(--card); color: var(--fg); border: 1px solid var(--line); padding: 7px 12px; }
+  .row button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .layout { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 900px) { .layout { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); } }
+  dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; }
+  dt { color: var(--muted); } dd { margin: 0; }
+  .draft { background: #ffe9a8; color: #5a4300; padding: 8px 12px; border-radius: 8px; }
+  [hidden] { display: none !important; }
+</style>
+<p><a href="/" class="muted">← {{ store_name }}</a></p>
+{% if draft_preview %}<p class="draft">Draft preview: this product isn't on the storefront and can't be bought yet. Set a price and take it live to sell it.</p>{% endif %}
+<div class="layout">
+  <div style="display:grid; gap:10px; min-width:0">
+    <div class="stage" id="stage">
+      <canvas id="gl" aria-label="3D model of {{ product.name }}. Drag to turn it, scroll or pinch to zoom."></canvas>
+      <div class="status" id="status">Loading the 3D model…</div>
+      <p class="hint" id="hint" hidden>Drag to turn · scroll or pinch to zoom · double-click a spot to look closely</p>
+    </div>
+    <div class="row">
+      <button type="button" data-view="front" aria-pressed="true">Front</button>
+      <button type="button" data-view="angle" aria-pressed="false">Angled</button>
+      <button type="button" data-view="back" aria-pressed="false">Back</button>
+      <button type="button" id="sweep" aria-pressed="false">Sweep the light</button>
+    </div>
+  </div>
+  <div style="display:grid; gap:14px; align-content:start; min-width:0">
+    <h1 style="margin:0">{{ product.name }}</h1>
+    <p style="margin:0">{{ product.description }}</p>
+    {% set d = product.details %}
+    <dl>
+      {% if d.size_mm %}<dt>Size</dt><dd>{{ "%.0f"|format(d.size_mm[0]) }} × {{ "%.0f"|format(d.size_mm[1]) }} mm, {{ "%.0f"|format(d.size_mm[2]) }} mm deep</dd>{% endif %}
+      {% if d.letters %}<dt>Letters</dt><dd>{{ d.letters[0] }} × {{ d.letters[1] }}, each {{ d.letter_mm[0] }} × {{ d.letter_mm[1] }} mm</dd>{% endif %}
+      {% if d.screw_spacing_mm %}<dt>Hanging</dt><dd>Two keyhole slots, {{ "%.0f"|format(d.screw_spacing_mm) }} mm apart</dd>{% endif %}
+      <dt>Made</dt><dd>3D-printed to order in full color</dd>
+    </dl>
+    <div class="price">{{ product.price_display if not product.draft else "Price coming soon" }}{% if product.physical and not product.draft %} <span class="muted" style="font-weight:400">+ shipping</span>{% endif %}</div>
+    {% if not product.draft %}<form method="post" action="/buy/{{ product.id }}"><button type="submit" style="width:100%">Buy now</button></form>{% endif %}
+  </div>
+</div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+const BASE = "/assets/{{ product.id }}/";
+const $ = id => document.getElementById(id), canvas = $("gl"), stage = $("stage"), status = $("status");
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
+catch (e) { status.textContent = "Your browser couldn't start 3D graphics. The photo on the storefront shows the piece."; throw e; }
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(renderer), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(30, 1, 0.002, 10);
+const controls = new OrbitControls(camera, canvas);
+Object.assign(controls, { enableDamping: true, dampingFactor: 0.08, minDistance: 0.025, maxDistance: 1.4, zoomToCursor: true });
+scene.add(new THREE.HemisphereLight(0xb8c4e0, 0x20180f, 0.35));
+const key = new THREE.DirectionalLight(0xfff1dc, 2.6);
+key.castShadow = true; key.shadow.mapSize.set(4096, 4096); key.shadow.bias = -0.00015; key.shadow.normalBias = 0.0004;
+Object.assign(key.shadow.camera, { left: -0.2, right: 0.2, top: 0.2, bottom: -0.2, near: 0.05, far: 1.5 });
+scene.add(key, key.target);
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshStandardMaterial({ color: 0x0d1018, roughness: 1, envMapIntensity: 0.15 }));
+wall.receiveShadow = true; scene.add(wall);
+let center = new THREE.Vector3(0.1, 0.12, 0.006), size = new THREE.Vector3(0.2, 0.24, 0.012), mesh = null, az = 135, behind = false, sweeping = false, fly = null;
+function placeLight() {
+  const a = THREE.MathUtils.degToRad(az), el = THREE.MathUtils.degToRad(38), d = 0.6;
+  key.position.set(center.x + d * Math.cos(el) * Math.cos(a), center.y + d * Math.cos(el) * Math.sin(a), center.z + (behind ? -d : d) * Math.sin(el));
+  key.target.position.copy(center);
+}
+const views = {
+  front: () => ({ pos: new THREE.Vector3(center.x, center.y, center.z + Math.max(size.x, size.y) * 2.6), tgt: center.clone() }),
+  angle: () => ({ pos: new THREE.Vector3(center.x + 0.3, center.y - 0.2, center.z + 0.42), tgt: center.clone() }),
+  back: () => ({ pos: new THREE.Vector3(center.x - 0.1, center.y + 0.06, center.z - 0.5), tgt: center.clone() }),
+};
+function go(name) {
+  document.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === name)));
+  behind = name === "back"; wall.visible = !behind; placeLight(); flyTo(views[name]());
+}
+function flyTo({ pos, tgt }) {
+  if (calm) { camera.position.copy(pos); controls.target.copy(tgt); controls.update(); return; }
+  fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: tgt, start: performance.now() };
+}
+function resize() { const w = stage.clientWidth, h = stage.clientHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(stage); resize();
+function tick(now) {
+  if (fly) {
+    const u = Math.min(1, (now - fly.start) / 900), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(2 - 2 * u, 2) / 2;
+    camera.position.lerpVectors(fly.p0, fly.p1, e); controls.target.lerpVectors(fly.t0, fly.t1, e);
+    if (u >= 1) fly = null;
+  }
+  if (sweeping) { az = (az + 0.6) % 360; placeLight(); }
+  controls.update(); renderer.render(scene, camera); requestAnimationFrame(tick);
+}
+// The model is JSON (glTF + base64 geometry) plus PNG textures; rebuild a binary glTF in memory.
+async function loadModel() {
+  const res = await fetch(BASE + "model.model.json");
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const { gltf, bin } = await res.json();
+  const raw = atob(bin), body = new Uint8Array((raw.length + 3) & ~3);
+  for (let i = 0; i < raw.length; i++) body[i] = raw.charCodeAt(i);
+  const js = new TextEncoder().encode(JSON.stringify(gltf)), json = new Uint8Array((js.length + 3) & ~3).fill(0x20); json.set(js);
+  const glb = new ArrayBuffer(28 + json.length + body.length), v = new DataView(glb);
+  v.setUint32(0, 0x46546C67, true); v.setUint32(4, 2, true); v.setUint32(8, glb.byteLength, true);
+  v.setUint32(12, json.length, true); v.setUint32(16, 0x4E4F534A, true); new Uint8Array(glb, 20).set(json);
+  const o = 20 + json.length; v.setUint32(o, body.length, true); v.setUint32(o + 4, 0x004E4942, true); new Uint8Array(glb, o + 8).set(body);
+  status.textContent = "Preparing textures…";
+  return new Promise((ok, fail) => new GLTFLoader().parse(glb, BASE, ok, fail));
+}
+loadModel().then(gltf => {
+  gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.material.envMapIntensity = 0.45; mesh = o; } });
+  scene.add(gltf.scene);
+  const box = new THREE.Box3().setFromObject(gltf.scene); box.getCenter(center); box.getSize(size);
+  wall.position.set(center.x, center.y, -0.0004); placeLight();
+  camera.position.copy(views.front().pos); controls.target.copy(center); controls.update();
+  status.hidden = true; $("hint").hidden = false;
+}).catch(err => { console.error(err); status.textContent = "The 3D model didn't load. Reload the page to try again."; });
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+canvas.addEventListener("dblclick", e => {
+  if (!mesh) return;
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera); const hit = ray.intersectObject(mesh, false)[0];
+  if (hit) flyTo({ pos: hit.point.clone().add(camera.position.clone().sub(hit.point).normalize().multiplyScalar(0.05)), tgt: hit.point.clone() });
+});
+document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => go(b.dataset.view)));
+$("sweep").addEventListener("click", () => { sweeping = !sweeping; $("sweep").setAttribute("aria-pressed", String(sweeping)); });
+placeLight(); camera.position.copy(views.front().pos); controls.target.copy(center); controls.update();
+requestAnimationFrame(tick);
+</script>
+{% endblock %}

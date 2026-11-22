@@ -16,10 +16,11 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .config import Product, Settings, load_catalog, load_settings
+from .config import Product, Settings, load_catalog, load_settings, seed_products
 from .db import Order, OrderStore
 from .fulfillment import Fulfiller, format_address, make_fulfiller
 from .mailer import send_email
+from .pieces import WEB_ASSET, BundleError, ingest, sign, update_product, verify
 
 log = logging.getLogger("shop")
 TEMPLATES = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -40,7 +41,8 @@ def _shipping(session: dict) -> tuple[str, dict]:
 
 def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = None) -> FastAPI:
     settings = settings or load_settings()
-    catalog = load_catalog(settings)
+    seed_products(settings)
+    catalog = load_catalog(settings)  # mutated in place when the pipeline publishes a piece
     store = OrderStore(settings.db_path)
     fulfiller = fulfiller or make_fulfiller(settings)
     app = FastAPI(title=settings.store_name, docs_url=None, redoc_url=None)
@@ -53,6 +55,17 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
         ctx.setdefault("store_name", settings.store_name)
         ctx.setdefault("settings", settings)
         return TEMPLATES.TemplateResponse(request, name, ctx, status_code=status)
+
+    def reload_catalog() -> None:
+        fresh = load_catalog(settings)
+        catalog.clear()
+        catalog.update(fresh)
+
+    def print_url(order: Order) -> str:
+        return f"{settings.base_url}/print-file/{order.session_id}?{sign(settings, 'print', order.session_id)}"
+
+    def preview_url(pid: str) -> str:
+        return f"{settings.base_url}/p/{pid}?{sign(settings, 'preview', pid, ttl_s=None)}"
 
     def link_for(order: Order, product: Product) -> str:
         path = "order" if product.physical else "download"
@@ -82,7 +95,7 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
         log.info("SALE %s %s %s", product.id, order.amount_total, email)
         link = link_for(order, product)
         if product.physical:
-            ref = fulfiller.submit(order, product)
+            ref = fulfiller.submit(order, product, print_url(order))
             if ref:
                 order = store.update(order.session_id, status="submitted", fulfillment_ref=ref)
             send_email(settings, email, f"Order confirmed: {product.name}",
@@ -103,12 +116,30 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
-        return render(request, "index.html", products=list(catalog.values()))
+        return render(request, "index.html", products=[p for p in catalog.values() if not p.draft])
+
+    @app.get("/p/{product_id}", response_class=HTMLResponse)
+    def product_page(request: Request, product_id: str, exp: str = "", sig: str = ""):
+        product = catalog.get(product_id)
+        preview = bool(sig) and verify(settings, "preview", product_id, exp, sig)
+        if product is None or (product.draft and not preview):
+            raise HTTPException(404, "No such product")
+        return render(request, "product.html", product=product, draft_preview=product.draft)
+
+    @app.get("/assets/{product_id}/{name}")
+    def asset(product_id: str, name: str):
+        product = catalog.get(product_id)
+        if product is None or not product.model or not WEB_ASSET.match(name):
+            raise HTTPException(404, "Not found")
+        path = settings.products_dir / Path(product.model).parent / name
+        if not path.is_file():
+            raise HTTPException(404, "Not found")
+        return FileResponse(path, headers={"Cache-Control": "public, max-age=3600"})
 
     @app.post("/buy/{product_id}")
     def buy(product_id: str):
         product = catalog.get(product_id)
-        if product is None:
+        if product is None or product.draft:
             raise HTTPException(404, "No such product")
         params: dict = dict(
             mode="payment",
@@ -213,6 +244,50 @@ def create_app(settings: Settings | None = None, fulfiller: Fulfiller | None = N
                        + (f"Tracking number: {tracking}\n" if tracking else "")
                        + f"\nOrder status: {link_for(order, product)}\n")
         return order.to_dict()
+
+    @app.get("/print-file/{session_id}")
+    def print_file(session_id: str, exp: str = "", sig: str = ""):
+        """Signed link from the print-order email: the 3MF for that order's product."""
+        if not verify(settings, "print", session_id, exp, sig):
+            raise HTTPException(403, "This link is invalid or has expired")
+        order = store.by_session(session_id)
+        product = catalog.get(order.product_id) if order else None
+        if product is None:
+            raise HTTPException(404, "Unknown order")
+        path = settings.products_dir / product.file
+        return FileResponse(path, filename=f"{product.id}{path.suffix}")
+
+    @app.post("/admin/pieces")
+    async def admin_publish_piece(request: Request, authorization: str = Header("")):
+        """Receive a pipeline bundle (zip) and publish or update that product."""
+        require_admin(authorization)
+        before = settings.catalog_path.read_text() if settings.catalog_path.exists() else None
+        try:
+            entry = ingest(settings, await request.body())
+            reload_catalog()
+        except BundleError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            if before is not None:  # never leave the store with a catalog it can't load
+                settings.catalog_path.write_text(before)
+                reload_catalog()
+            raise HTTPException(400, f"Bundle rejected: {e}")
+        return {"id": entry["id"], "draft": entry["draft"], "price_cents": entry["price_cents"],
+                "url": f"{settings.base_url}/p/{entry['id']}", "preview_url": preview_url(entry["id"])}
+
+    @app.post("/admin/products/{product_id}")
+    def admin_update_product(product_id: str, price_cents: int | None = Body(None), draft: bool | None = Body(None),
+                             authorization: str = Header("")):
+        """Set a product's price and/or take it live (draft=false) or hide it (draft=true)."""
+        require_admin(authorization)
+        try:
+            entry = update_product(settings, product_id, price_cents=price_cents, draft=draft)
+        except KeyError:
+            raise HTTPException(404, "No such product")
+        except BundleError as e:
+            raise HTTPException(400, str(e))
+        reload_catalog()
+        return entry
 
     @app.get("/healthz")
     def healthz():
