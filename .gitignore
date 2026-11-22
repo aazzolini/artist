@@ -4,3 +4,4 @@ __pycache__/
 orders.db
 .pytest_cache/
 out/
+relief/pieces/o_*.json
