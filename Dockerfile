@@ -8,4 +8,5 @@ COPY products ./products
 ENV DB_PATH=/data/orders.db PRODUCTS_DIR=/data/products SEED_PRODUCTS_DIR=/app/products
 VOLUME /data
 EXPOSE 8000
-CMD ["uvicorn", "shop.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# Hosts like Render pass the port to listen on in $PORT.
+CMD ["sh", "-c", "exec uvicorn shop.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
