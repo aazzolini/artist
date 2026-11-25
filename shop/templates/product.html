@@ -80,6 +80,24 @@ scene.add(key, key.target);
 const wall = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshStandardMaterial({ color: 0x0d1018, roughness: 1, envMapIntensity: 0.15 }));
 wall.receiveShadow = true; scene.add(wall);
 let center = new THREE.Vector3(0.1, 0.12, 0.006), size = new THREE.Vector3(0.2, 0.24, 0.012), mesh = null, az = 135, behind = false, sweeping = false, fly = null;
+// Idle sway: while nobody is touching the model, the camera drifts left/right and up/down around
+// where it rests, so visitors see the sides and the depth. Any input pauses it; it resumes after 5 s.
+const SWAY_YAW = 0.35, SWAY_PITCH = 0.17, RESUME_MS = 5000;
+let lastInput = -Infinity, sway = null;
+const off = new THREE.Vector3(), sph = new THREE.Spherical();
+function userInput() { lastInput = performance.now(); sway = null; }
+["pointerdown", "wheel", "touchstart"].forEach(ev => canvas.addEventListener(ev, userInput, { passive: true }));
+function swayStep(now) {
+  if (calm || !mesh || fly || now - lastInput < RESUME_MS) { return; }
+  if (!sway) {  // start from wherever the camera rests now, easing in so nothing jumps
+    sph.setFromVector3(off.copy(camera.position).sub(controls.target));
+    sway = { t0: now, theta: sph.theta, phi: sph.phi, r: sph.radius };
+  }
+  const t = (now - sway.t0) / 1000, ease = Math.min(1, t / 2.5);
+  const theta = sway.theta + ease * SWAY_YAW * Math.sin(t * 2 * Math.PI / 9);
+  const phi = Math.min(Math.PI - 0.05, Math.max(0.05, sway.phi + ease * SWAY_PITCH * Math.sin(t * 2 * Math.PI / 13)));
+  camera.position.copy(controls.target).add(off.setFromSphericalCoords(sway.r, phi, theta));
+}
 function placeLight() {
   const a = THREE.MathUtils.degToRad(az), el = THREE.MathUtils.degToRad(38), d = 0.6;
   key.position.set(center.x + d * Math.cos(el) * Math.cos(a), center.y + d * Math.cos(el) * Math.sin(a), center.z + (behind ? -d : d) * Math.sin(el));
@@ -91,6 +109,7 @@ const views = {
   back: () => ({ pos: new THREE.Vector3(center.x - 0.1, center.y + 0.06, center.z - 0.5), tgt: center.clone() }),
 };
 function go(name) {
+  sway = null;
   document.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === name)));
   behind = name === "back"; wall.visible = !behind; placeLight(); flyTo(views[name]());
 }
@@ -104,9 +123,10 @@ function tick(now) {
   if (fly) {
     const u = Math.min(1, (now - fly.start) / 900), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(2 - 2 * u, 2) / 2;
     camera.position.lerpVectors(fly.p0, fly.p1, e); controls.target.lerpVectors(fly.t0, fly.t1, e);
-    if (u >= 1) fly = null;
+    if (u >= 1) { fly = null; sway = null; }
   }
   if (sweeping) { az = (az + 0.6) % 360; placeLight(); }
+  swayStep(now);
   controls.update(); renderer.render(scene, camera); requestAnimationFrame(tick);
 }
 // The model is JSON (glTF + base64 geometry) plus PNG textures; rebuild a binary glTF in memory.
