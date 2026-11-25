@@ -95,6 +95,8 @@ function oscStep(o, dt, now) {
   o.phase += 2 * Math.PI * o.f * dt;   // integrating the phase keeps speed changes smooth
   return o.amp * Math.sin(o.phase);
 }
+let lastInput = -Infinity, sway = null;
+const off = new THREE.Vector3(), sph = new THREE.Spherical();
 function userInput() { lastInput = performance.now(); sway = null; }
 ["pointerdown", "wheel", "touchstart"].forEach(ev => canvas.addEventListener(ev, userInput, { passive: true }));
 function swayStep(now) {
