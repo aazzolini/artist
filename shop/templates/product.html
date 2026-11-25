@@ -80,9 +80,20 @@ scene.add(key, key.target);
 const wall = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshStandardMaterial({ color: 0x0d1018, roughness: 1, envMapIntensity: 0.15 }));
 wall.receiveShadow = true; scene.add(wall);
 let center = new THREE.Vector3(0.1, 0.12, 0.006), size = new THREE.Vector3(0.2, 0.24, 0.012), mesh = null, az = 135, behind = false, sweeping = false, fly = null;
-// Idle sway: while nobody is touching the model, the camera drifts left/right and up/down around
-// where it rests, so visitors see the sides and the depth. Any input pauses it; it resumes after 5 s.
-const SWAY_YAW = 0.35, SWAY_PITCH = 0.17, RESUME_MS = 5000;
+// Idle tour: while nobody is touching the model, the camera tilts a few degrees around where it
+// rests (up, down, each diagonal, left, right), returning to center between moves, so visitors see
+// the sides and the depth. Any input pauses it; it resumes after 5 s.
+const SWAY_YAW = THREE.MathUtils.degToRad(8), SWAY_PITCH = THREE.MathUtils.degToRad(6), RESUME_MS = 5000;
+const D = 0.75;  // diagonals: a bit less on each axis
+const TOUR = [[0, 1], [0, -1], [-D, D], [D, D], [-D, -D], [D, -D], [-1, 0], [1, 0]];  // [x (+right), y (+up)]
+const MOVE_S = 1.3, HOLD_S = 0.5;  // ease out to a pose, ease back to center, pause at center
+const STEP_S = 2 * MOVE_S + HOLD_S;
+function tourPose(t) {
+  const k = Math.floor(t / STEP_S) % TOUR.length, u = t % STEP_S;
+  const ease = x => x * x * (3 - 2 * x);
+  const amt = u < MOVE_S ? ease(u / MOVE_S) : u < 2 * MOVE_S ? ease(1 - (u - MOVE_S) / MOVE_S) : 0;
+  return [TOUR[k][0] * amt, TOUR[k][1] * amt];
+}
 let lastInput = -Infinity, sway = null;
 const off = new THREE.Vector3(), sph = new THREE.Spherical();
 function userInput() { lastInput = performance.now(); sway = null; }
@@ -93,9 +104,10 @@ function swayStep(now) {
     sph.setFromVector3(off.copy(camera.position).sub(controls.target));
     sway = { t0: now, theta: sph.theta, phi: sph.phi, r: sph.radius };
   }
-  const t = (now - sway.t0) / 1000, ease = Math.min(1, t / 2.5);
-  const theta = sway.theta + ease * SWAY_YAW * Math.sin(t * 2 * Math.PI / 9);
-  const phi = Math.min(Math.PI - 0.05, Math.max(0.05, sway.phi + ease * SWAY_PITCH * Math.sin(t * 2 * Math.PI / 13)));
+  const [x, y] = tourPose((now - sway.t0) / 1000);
+  // camera moves right to see the left side, up to see the top: theta grows to the right, phi shrinks upward
+  const theta = sway.theta + SWAY_YAW * x;
+  const phi = Math.min(Math.PI - 0.05, Math.max(0.05, sway.phi - SWAY_PITCH * y));
   camera.position.copy(controls.target).add(off.setFromSphericalCoords(sway.r, phi, theta));
 }
 function placeLight() {
