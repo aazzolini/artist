@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ store_name }}</h1>
+<div class="grid">
+  {% for p in products %}
+  <div class="card">
+    {% if p.image %}{% if p.model %}<a href="/p/{{ p.id }}">{% endif %}<img src="/images/{{ p.image }}" alt="{{ p.name }}" loading="lazy">{% if p.model %}</a>{% endif %}{% endif %}
+    <span class="tag">{{ "3D-printed figure" if p.physical else "Digital download" }}</span>
+    <h2 style="margin:0">{% if p.model %}<a href="/p/{{ p.id }}" style="color:inherit">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}</h2>
+    <p>{{ p.description }}</p>
+    <div class="price">{{ p.price_display }}{% if p.physical %} <span class="muted" style="font-weight:400;font-size:.8em">+ shipping</span>{% endif %}</div>
+    <form method="post" action="/buy/{{ p.id }}"><button type="submit" style="width:100%">Buy now</button></form>
+  </div>
+  {% else %}
+  <p class="muted">No products yet. Add some to products/catalog.json.</p>
+  {% endfor %}
+</div>
+{% endblock %}

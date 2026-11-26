@@ -1,0 +1,20 @@
+# One-click deploy: Render Dashboard > New > Blueprint > pick this repo. No keys to enter here:
+# after it's live, open https://<your-service>.onrender.com/admin to create your password and connect Stripe.
+# The "starter" plan (~$7/mo) is needed for the persistent disk that keeps orders, settings and products.
+services:
+  - type: web
+    name: shop
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 10  # each published piece is ~50 MB (print file + web model)
+    envVars:
+      - key: STORE_NAME
+        value: My Store
+      - key: SHIPPING_CENTS
+        value: "599"
+      - key: SHIP_COUNTRIES
+        value: US

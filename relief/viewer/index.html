@@ -1,0 +1,311 @@
+<title>The Catch in Relief</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: a gallery wall. The plaque fills a wide stage; the light and finish controls sit beneath it,
+   then the print facts. Single dark look on purpose, matching News in Letters. */
+:root {
+  --ink: #0a0d14;
+  --wall: #10141e;
+  --surface: #151a26;
+  --line: #283040;
+  --text: #ece8df;
+  --muted: #8d95a5;
+  --accent: #e6b450;
+  --font-display: "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-body: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--ink); color: var(--text); font-family: var(--font-body); font-size: 13.5px; line-height: 1.55; }
+.page { max-width: 1180px; margin: 0 auto; padding-block: 22px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px 32px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(40px, 8vw, 64px); line-height: 0.95; margin: 0; text-wrap: balance; }
+h1 em { color: var(--accent); }
+.lede { margin: 0; max-width: 52ch; color: var(--muted); }
+.stage { position: relative; width: 100%; height: min(76vh, 760px); min-height: 380px; border-radius: 6px; overflow: hidden; background: radial-gradient(ellipse at 50% 40%, #1a2030 0%, var(--wall) 70%); box-shadow: 0 0 0 1px var(--line); }
+#gl { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#gl:active { cursor: grabbing; }
+.status { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); pointer-events: none; }
+.hint { position: absolute; left: 12px; bottom: 10px; right: 12px; margin: 0; color: var(--muted); font-size: 12px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 24px; align-items: start; }
+.group { display: grid; gap: 8px; min-width: 0; }
+.label { color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; }
+button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.slider { display: grid; grid-template-columns: 4.5em minmax(0, 1fr) 3.2em; align-items: center; gap: 10px; }
+.slider span { color: var(--muted); }
+.slider output { text-align: right; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); height: 26px; margin: 0; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 24px; margin: 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.facts div { min-width: 0; }
+.facts dt { color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.facts dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
+footer { color: var(--muted); font-size: 12px; max-width: 72ch; }
+footer p { margin: 0 0 6px; }
+</style>
+
+<div class="page">
+  <header>
+    <h1>The Catch, <em>in relief</em></h1>
+    <p class="lede">The Starship tower catch from News in Letters, built as a full-color sculpted plaque in a carved letter frame. The picture is made of raised letters, and every object sits at its own depth.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="gl" aria-label="3D model of the relief plaque. Drag to turn it, scroll or pinch to zoom."></canvas>
+    <div class="status" id="status">Loading the model…</div>
+    <p class="hint" id="hint" hidden>Drag to turn · scroll or pinch to zoom · double-click a spot to look closely</p>
+  </div>
+
+  <section class="controls" aria-label="View controls">
+    <div class="group">
+      <span class="label">View</span>
+      <div class="row">
+        <button type="button" id="v-front" aria-pressed="true">Front</button>
+        <button type="button" id="v-angle" aria-pressed="false">Angled</button>
+        <button type="button" id="v-letters" aria-pressed="false">Letters up close</button>
+        <button type="button" id="v-frame" aria-pressed="false">Frame up close</button>
+        <button type="button" id="v-back" aria-pressed="false">Back</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="label">Light</span>
+      <label class="slider" for="az"><span>Direction</span><input type="range" id="az" min="0" max="360" step="1" value="135"><output id="az-o">135°</output></label>
+      <label class="slider" for="el"><span>Height</span><input type="range" id="el" min="4" max="85" step="1" value="38"><output id="el-o">38°</output></label>
+      <div class="row"><button type="button" id="sweep" aria-pressed="false">Sweep the light</button><button type="button" id="rake">Raking light</button></div>
+    </div>
+    <div class="group">
+      <span class="label">Print finish</span>
+      <div class="row">
+        <button type="button" data-finish="matte" aria-pressed="false">Matte</button>
+        <button type="button" data-finish="satin" aria-pressed="true">Satin</button>
+        <button type="button" data-finish="gloss" aria-pressed="false">Gloss</button>
+      </div>
+    </div>
+  </section>
+
+  <dl class="facts">
+    <div><dt>Size</dt><dd>229 × 275 mm · 14.6 mm deep</dd></div>
+    <div><dt>Letters</dt><dd>153 × 125 · each 1.5 × 2.2 mm</dd></div>
+    <div><dt>Relief</dt><dd>3 mm base · objects to 9 mm · frame crest 11 mm · letters +0.6 mm</dd></div>
+    <div><dt>Print</dt><dd>Full-color PolyJet · 268 cm³</dd></div>
+    <div><dt>Hanging</dt><dd>Two keyhole slots, 217 mm apart · two #6–#8 screws</dd></div>
+  </dl>
+
+  <footer>
+    <p>Ready to hang: the back is hollowed like a real frame, and two keyhole slots sit in the sides of the frame. Put two screws in the wall 217 mm apart and level, leaving the heads about 3 mm out. Set the piece over them and slide it down. This is a preview of the print file. On screen, the letters' height is drawn from a surface map, so it looks right in the light but doesn't change the outline. The printed piece has real raised letters. Printed colors usually come out a little darker than on screen.</p>
+  </footer>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const $ = id => document.getElementById(id);
+const canvas = $("gl"), stage = $("stage"), status = $("status");
+const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+} catch (e) {
+  status.textContent = "Your browser couldn't start 3D graphics (WebGL). Try another browser or device.";
+  throw e;
+}
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(30, 1, 0.002, 10);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 0.025;
+controls.maxDistance = 1.4;
+controls.zoomToCursor = true;
+
+scene.add(new THREE.HemisphereLight(0xb8c4e0, 0x20180f, 0.35));
+const key = new THREE.DirectionalLight(0xfff1dc, 2.6);
+key.castShadow = true;
+key.shadow.mapSize.set(4096, 4096);
+key.shadow.bias = -0.00015;
+key.shadow.normalBias = 0.0004;
+Object.assign(key.shadow.camera, { left: -0.2, right: 0.2, top: 0.2, bottom: -0.2, near: 0.05, far: 1.5 });
+scene.add(key, key.target);
+
+let center = new THREE.Vector3(0.0997, 0.122, 0.006), size = new THREE.Vector3(0.2, 0.244, 0.0126), mesh = null, mats = [];
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshStandardMaterial({ color: 0x0d1018, roughness: 1, envMapIntensity: 0.15 }));
+wall.receiveShadow = true;
+scene.add(wall);
+
+function placeLight() {
+  const az = THREE.MathUtils.degToRad(+$("az").value), el = THREE.MathUtils.degToRad(+$("el").value), d = 0.6 * (behind ? -1 : 1);
+  // az 0 = light from the right, 90 = from the top; el = angle above the plaque's surface
+  key.position.set(center.x + Math.abs(d) * Math.cos(el) * Math.cos(az), center.y + Math.abs(d) * Math.cos(el) * Math.sin(az), center.z + d * Math.sin(el));
+  key.target.position.copy(center);
+  $("az-o").textContent = $("az").value + "°";
+  $("el-o").textContent = $("el").value + "°";
+}
+
+const views = {
+  front: () => ({ pos: new THREE.Vector3(center.x, center.y, center.z + 0.62), tgt: center.clone() }),
+  angle: () => ({ pos: new THREE.Vector3(center.x + 0.3, center.y - 0.2, center.z + 0.42), tgt: center.clone() }),
+  letters: () => {
+    const t = new THREE.Vector3(0.456 * size.x, (1 - 0.405) * size.y, 0.011);
+    return { pos: t.clone().add(new THREE.Vector3(0.012, -0.018, 0.045)), tgt: t };
+  },
+  back: () => {  // the right-hand keyhole as seen from behind (6 mm in from the edge, 45 mm below the top)
+    const t = new THREE.Vector3(size.x - 0.006, size.y - 0.045 + 0.004, 0.0);
+    return { pos: t.clone().add(new THREE.Vector3(0.03, -0.02, -0.11)), tgt: t };
+  },
+  frame: () => {
+    const t = new THREE.Vector3(0.035 * size.x, (1 - 0.03) * size.y, 0.012);
+    return { pos: t.clone().add(new THREE.Vector3(0.05, -0.045, 0.05)), tgt: t };
+  },
+};
+let fly = null;
+function go(name) {
+  for (const n of ["front", "angle", "letters", "frame", "back"]) $("v-" + n).setAttribute("aria-pressed", String(n === name));
+  behind = name === "back"; wall.visible = !behind; placeLight();
+  flyTo(views[name]());
+}
+function flyTo({ pos, tgt }) {
+  if (calm) { camera.position.copy(pos); controls.target.copy(tgt); controls.update(); return; }
+  fly = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: tgt, start: performance.now(), dur: 900 };
+}
+
+const finishes = { matte: 1.3, satin: 1.0, gloss: 0.5 };
+function setFinish(name) {
+  for (const m of mats) { m.roughness = finishes[name]; m.needsUpdate = true; }
+  document.querySelectorAll("[data-finish]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.finish === name)));
+}
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(stage);
+resize();
+
+let sweeping = false, behind = false;
+function tick(now) {
+  if (fly) {
+    const u = Math.min(1, (now - fly.start) / fly.dur), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(2 - 2 * u, 2) / 2;
+    camera.position.lerpVectors(fly.p0, fly.p1, e);
+    controls.target.lerpVectors(fly.t0, fly.t1, e);
+    if (u >= 1) fly = null;
+  }
+  if (sweeping) {
+    $("az").value = String((+$("az").value + 0.6) % 360);
+    placeLight();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+function onModel(gltf) {
+  const root = gltf.scene;
+  root.traverse(o => {
+    if (o.isMesh) {
+      o.castShadow = o.receiveShadow = true;
+      o.material.envMapIntensity = 0.45;
+      mats.push(o.material);
+      mesh = o;
+    }
+  });
+  scene.add(root);
+  const box = new THREE.Box3().setFromObject(root);
+  box.getCenter(center); box.getSize(size);
+  wall.position.set(center.x, center.y, -0.0004);
+  placeLight();
+  setFinish("satin");
+  camera.position.copy(views.front().pos); controls.target.copy(center); controls.update();
+  status.hidden = true; $("hint").hidden = false;
+}
+
+// The model ships as JSON (glTF + base64 geometry) plus PNG textures beside the page.
+// We rebuild a binary glTF in memory, so nothing is fetched from data: or blob: URLs.
+async function loadModel(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const total = +res.headers.get("content-length") || 0, reader = res.body.getReader(), parts = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value); got += value.length;
+    status.textContent = "Loading the model… " + (total ? Math.round(100 * got / total) + "%" : (got / 1e6).toFixed(1) + " MB");
+  }
+  const { gltf, bin } = JSON.parse(await new Blob(parts).text());
+  const raw = atob(bin), body = new Uint8Array((raw.length + 3) & ~3);
+  for (let i = 0; i < raw.length; i++) body[i] = raw.charCodeAt(i);
+  let json = new TextEncoder().encode(JSON.stringify(gltf));
+  const jpad = (json.length + 3) & ~3, head = new Uint8Array(jpad).fill(0x20);
+  head.set(json); json = head;
+  const glb = new ArrayBuffer(12 + 8 + json.length + 8 + body.length), v = new DataView(glb);
+  v.setUint32(0, 0x46546C67, true); v.setUint32(4, 2, true); v.setUint32(8, glb.byteLength, true);
+  v.setUint32(12, json.length, true); v.setUint32(16, 0x4E4F534A, true); new Uint8Array(glb, 20).set(json);
+  const o = 20 + json.length;
+  v.setUint32(o, body.length, true); v.setUint32(o + 4, 0x004E4942, true); new Uint8Array(glb, o + 8).set(body);
+  status.textContent = "Preparing textures…";
+  return new Promise((ok, fail) => new GLTFLoader().parse(glb, "./", ok, fail));
+}
+
+loadModel("the-catch-framed.model.json").then(onModel).catch(err => {
+  console.error(err);
+  status.textContent = "The model didn't load (" + (err && err.message || err) + "). Reload the page to try again.";
+});
+
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+canvas.addEventListener("dblclick", e => {
+  if (!mesh) return;
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hit = ray.intersectObject(mesh, false)[0];
+  if (!hit) return;
+  const dir = camera.position.clone().sub(hit.point).normalize();
+  flyTo({ pos: hit.point.clone().add(dir.multiplyScalar(0.05)), tgt: hit.point.clone() });
+});
+
+$("v-front").addEventListener("click", () => go("front"));
+$("v-angle").addEventListener("click", () => go("angle"));
+$("v-letters").addEventListener("click", () => go("letters"));
+$("v-frame").addEventListener("click", () => go("frame"));
+$("v-back").addEventListener("click", () => go("back"));
+$("az").addEventListener("input", placeLight);
+$("el").addEventListener("input", placeLight);
+$("rake").addEventListener("click", () => { $("el").value = "8"; placeLight(); });
+$("sweep").addEventListener("click", () => {
+  sweeping = !sweeping;
+  $("sweep").setAttribute("aria-pressed", String(sweeping));
+});
+document.querySelectorAll("[data-finish]").forEach(b => b.addEventListener("click", () => setFinish(b.dataset.finish)));
+
+placeLight();
+camera.position.copy(views.front().pos); controls.target.copy(center); controls.update();
+requestAnimationFrame(tick);
+</script>

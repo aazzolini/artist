@@ -1,0 +1,170 @@
+solid sample
+ facet normal 0 0 0
+  outer loop
+   vertex 0 0 0
+   vertex 0 0 5
+   vertex 0 40 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 0 0
+   vertex 0 40 5
+   vertex 0 40 0
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 40 0 0
+   vertex 40 40 0
+   vertex 40 40 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 40 0 0
+   vertex 40 40 5
+   vertex 40 0 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 0 0
+   vertex 40 0 0
+   vertex 40 0 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 0 0
+   vertex 40 0 5
+   vertex 0 0 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 40 0
+   vertex 0 40 5
+   vertex 40 40 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 40 0
+   vertex 40 40 5
+   vertex 40 40 0
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 0 0
+   vertex 0 40 0
+   vertex 40 40 0
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 0 0
+   vertex 40 40 0
+   vertex 40 0 0
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 0 5
+   vertex 40 0 5
+   vertex 40 40 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 0 0 5
+   vertex 40 40 5
+   vertex 0 40 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 5 5
+   vertex 5 5 35
+   vertex 5 35 35
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 5 5
+   vertex 5 35 35
+   vertex 5 35 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 35 5 5
+   vertex 35 35 5
+   vertex 35 35 35
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 35 5 5
+   vertex 35 35 35
+   vertex 35 5 35
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 5 5
+   vertex 35 5 5
+   vertex 35 5 35
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 5 5
+   vertex 35 5 35
+   vertex 5 5 35
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 35 5
+   vertex 5 35 35
+   vertex 35 35 35
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 35 5
+   vertex 35 35 35
+   vertex 35 35 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 5 5
+   vertex 5 35 5
+   vertex 35 35 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 5 5
+   vertex 35 35 5
+   vertex 35 5 5
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 5 35
+   vertex 35 5 35
+   vertex 35 35 35
+  endloop
+ endfacet
+ facet normal 0 0 0
+  outer loop
+   vertex 5 5 35
+   vertex 35 35 35
+   vertex 5 35 35
+  endloop
+ endfacet
+endsolid sample

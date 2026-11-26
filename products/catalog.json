@@ -1,0 +1,13 @@
+[
+  {
+    "id": "sample-figure",
+    "kind": "physical",
+    "name": "Sample Figure (placeholder)",
+    "description": "Replace with one of your characters: put its image in products/images and its 3D model (STL) in products/files.",
+    "price_cents": 3900,
+    "currency": "usd",
+    "file": "files/sample-figure.stl",
+    "image": "sample-figure.svg",
+    "draft": true
+  }
+]

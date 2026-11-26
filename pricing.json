@@ -1,0 +1,10 @@
+{
+  "_comment": "Fill in from real print-service quotes. Until both rates are set, the pipeline publishes pieces as hidden drafts. price = max((base + rate * volume_cm3 + print_shipping_cost) * markup, min_price), rounded up to round_to.",
+  "print_cost_per_cm3": null,
+  "print_cost_base": null,
+  "print_shipping_cost": 15,
+  "markup": 2.5,
+  "min_price": 79,
+  "round_to": 5,
+  "currency": "usd"
+}

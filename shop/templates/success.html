@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Thank you · {{ store_name }}{% endblock %}
+{% block body %}
+<h1>Thank you!</h1>
+{% if product.physical %}
+<p>Your order for <strong>{{ product.name }}</strong> is confirmed. Each figure is 3D-printed to order and then shipped to you.</p>
+<p><a class="btn" href="{{ link }}">Track your order</a></p>
+<p class="muted">{% if order.email and settings.smtp_host %}A confirmation was sent to {{ order.email }}.{% else %}Bookmark this link to check your order's status.{% endif %}</p>
+{% else %}
+<p>Your purchase of <strong>{{ product.name }}</strong> is complete.</p>
+<p><a class="btn" href="{{ link }}">Download {{ product.name }}</a></p>
+<p class="muted">This link works {{ settings.max_downloads }} times for {{ settings.link_ttl_hours }} hours.
+{% if order.email and settings.smtp_host %}We also emailed it to {{ order.email }}.{% else %}Bookmark it now.{% endif %}</p>
+{% endif %}
+{% endblock %}

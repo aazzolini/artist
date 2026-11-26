@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Your order · {{ store_name }}{% endblock %}
+{% block body %}
+<h1>{{ product.name }}</h1>
+{% set stage = {"awaiting_fulfillment": 1, "submitted": 2, "shipped": 3}.get(order.status, 1) %}
+<ul class="steps">
+  <li class="done">Paid</li>
+  <li class="{{ 'done' if stage >= 2 }}">Printing</li>
+  <li class="{{ 'done' if stage >= 3 }}">Shipped</li>
+</ul>
+{% if order.tracking %}<p>Tracking number: <strong>{{ order.tracking }}</strong></p>{% endif %}
+<p class="muted">Shipping to {{ order.ship_name }}{% if order.address.city %}, {{ order.address.city }}{% endif %}.</p>
+{% endblock %}

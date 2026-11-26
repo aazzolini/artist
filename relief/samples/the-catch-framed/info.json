@@ -1,0 +1,42 @@
+{
+ "previews": {
+  "room": "preview_room.png",
+  "closeup": "preview_closeup.png",
+  "3d": "preview_3d.png"
+ },
+ "print_mesh_simplifier": {
+  "front": "quadric (try 2)",
+  "back": "quadric (try 1)"
+ },
+ "glb_triangles": 214790,
+ "glb_mb": 9.3,
+ "gltf_json_mb": 12.5,
+ "web_files": {
+  "the-catch-framed-0.png": 1726828,
+  "the-catch-framed-1.png": 1877776,
+  "the-catch-framed-2.png": 623708,
+  "the-catch-framed.model.json": 6818240
+ },
+ "size_mm": [
+  229.4,
+  274.9,
+  14.6
+ ],
+ "volume_cm3": 268.4,
+ "triangles": 1537476,
+ "letters": [
+  153,
+  125
+ ],
+ "keyholes_mm": [
+  [
+   6.0,
+   229.9
+  ],
+  [
+   223.4,
+   229.9
+  ]
+ ],
+ "screw_spacing_mm": 217.4
+}
